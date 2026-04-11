@@ -122,9 +122,8 @@ func (s *Scanner) tryImport(ctx context.Context, dl *models.Download, downloadPa
 			continue
 		}
 
-		// Update book status
-		book.Status = models.BookStatusImported
-		s.books.Update(ctx, book)
+		// Update book status and file path
+		s.books.SetFilePath(ctx, book.ID, destPath)
 		s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusImported)
 		slog.Info("book imported", "title", book.Title, "path", destPath)
 	}

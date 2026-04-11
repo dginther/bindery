@@ -64,9 +64,20 @@ export default function BooksPage() {
               </div>
               <div className="p-2">
                 <h3 className="text-xs font-medium truncate" title={book.title}>{book.title}</h3>
-                {book.releaseDate && (
-                  <p className="text-[10px] text-zinc-500 mt-0.5">{new Date(book.releaseDate).getFullYear()}</p>
-                )}
+                <div className="flex items-center justify-between mt-0.5">
+                  {book.releaseDate && (
+                    <p className="text-[10px] text-zinc-500">{new Date(book.releaseDate).getFullYear()}</p>
+                  )}
+                  {book.filePath && (
+                    <a
+                      href={`/api/v1/book/${book.id}/file`}
+                      className="text-[10px] text-emerald-400 hover:text-emerald-300"
+                      title="Download file"
+                    >
+                      Download
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
           ))}

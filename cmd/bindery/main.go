@@ -93,6 +93,7 @@ func main() {
 	indexerHandler := api.NewIndexerHandler(indexerRepo, bookRepo, authorRepo, idxSearcher)
 	dlClientHandler := api.NewDownloadClientHandler(dlClientRepo)
 	queueHandler := api.NewQueueHandler(downloadRepo, dlClientRepo)
+	fileHandler := api.NewFileHandler(bookRepo)
 
 	// Router
 	r := chi.NewRouter()
@@ -131,6 +132,7 @@ func main() {
 		r.Put("/book/{id}", bookHandler.Update)
 		r.Delete("/book/{id}", bookHandler.Delete)
 		r.Post("/book/{id}/search", indexerHandler.SearchBook)
+		r.Get("/book/{id}/file", fileHandler.Download)
 
 		// Wanted
 		r.Get("/wanted/missing", bookHandler.ListWanted)

@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -72,22 +73,8 @@ func setPragmas(db *sql.DB) error {
 }
 
 func migrate(database *sql.DB) error {
-	content, err := migrationsFS.ReadFile("migrations/001_initial.sql")
-	if err != nil {
-		return fmt.Errorf("read migration: %w", err)
-	}
-
-	// Extract only the Up portion (before -- +migrate Down)
-	sqlStr := string(content)
-	if idx := strings.Index(sqlStr, "-- +migrate Down"); idx >= 0 {
-		sqlStr = sqlStr[:idx]
-	}
-
-	// Remove the +migrate Up marker
-	sqlStr = strings.Replace(sqlStr, "-- +migrate Up", "", 1)
-
 	// Create a migrations tracking table
-	_, err = database.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+	_, err := database.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version INTEGER PRIMARY KEY,
 		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)`)
@@ -95,44 +82,66 @@ func migrate(database *sql.DB) error {
 		return fmt.Errorf("create migrations table: %w", err)
 	}
 
-	// Check if already applied
-	var count int
-	err = database.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version = 1").Scan(&count)
+	// Read all migration files
+	entries, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
-		return fmt.Errorf("check migration status: %w", err)
+		return fmt.Errorf("read migrations dir: %w", err)
 	}
 
-	if count > 0 {
-		return nil
-	}
+	// Sort by filename (001_, 002_, etc.)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
 
-	// Split into individual statements and execute each
-	statements := strings.Split(sqlStr, ";")
-	for _, stmt := range statements {
-		// Strip comment-only lines but keep SQL that follows comments
-		lines := strings.Split(stmt, "\n")
-		var cleaned []string
-		for _, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "" || strings.HasPrefix(trimmed, "--") {
-				continue
-			}
-			cleaned = append(cleaned, line)
+	for version, entry := range entries {
+		v := version + 1 // 1-indexed
+
+		// Check if already applied
+		var count int
+		if err := database.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version = ?", v).Scan(&count); err != nil {
+			return fmt.Errorf("check migration %d: %w", v, err)
 		}
-		stmt = strings.TrimSpace(strings.Join(cleaned, "\n"))
-		if stmt == "" {
+		if count > 0 {
 			continue
 		}
-		if _, err := database.Exec(stmt); err != nil {
-			return fmt.Errorf("apply migration statement: %w\nSQL: %s", err, stmt)
+
+		content, err := migrationsFS.ReadFile("migrations/" + entry.Name())
+		if err != nil {
+			return fmt.Errorf("read migration %s: %w", entry.Name(), err)
 		}
+
+		sqlStr := string(content)
+		if idx := strings.Index(sqlStr, "-- +migrate Down"); idx >= 0 {
+			sqlStr = sqlStr[:idx]
+		}
+		sqlStr = strings.Replace(sqlStr, "-- +migrate Up", "", 1)
+
+		// Execute each statement individually
+		for _, stmt := range strings.Split(sqlStr, ";") {
+			// Strip comment-only lines
+			lines := strings.Split(stmt, "\n")
+			var cleaned []string
+			for _, line := range lines {
+				trimmed := strings.TrimSpace(line)
+				if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+					continue
+				}
+				cleaned = append(cleaned, line)
+			}
+			stmt = strings.TrimSpace(strings.Join(cleaned, "\n"))
+			if stmt == "" {
+				continue
+			}
+			if _, err := database.Exec(stmt); err != nil {
+				return fmt.Errorf("migration %d statement: %w\nSQL: %s", v, err, stmt)
+			}
+		}
+
+		if _, err := database.Exec("INSERT INTO schema_migrations (version) VALUES (?)", v); err != nil {
+			return fmt.Errorf("record migration %d: %w", v, err)
+		}
+		slog.Info("applied migration", "version", v, "file", entry.Name())
 	}
 
-	_, err = database.Exec("INSERT INTO schema_migrations (version) VALUES (1)")
-	if err != nil {
-		return fmt.Errorf("record migration: %w", err)
-	}
-
-	slog.Info("applied migration", "version", 1)
 	return nil
 }

@@ -90,6 +90,7 @@ export interface Book {
   genres: string[]
   monitored: boolean
   status: string
+  filePath: string
   author?: Author
 }
 

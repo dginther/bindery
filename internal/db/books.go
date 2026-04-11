@@ -18,20 +18,25 @@ func NewBookRepo(db *sql.DB) *BookRepo {
 	return &BookRepo{db: db}
 }
 
+const bookColumns = `id, foreign_id, author_id, title, sort_title, original_title, description,
+	image_url, release_date, genres, average_rating, ratings_count, monitored, status,
+	any_edition_ok, selected_edition_id, file_path, metadata_provider, last_metadata_refresh_at,
+	created_at, updated_at`
+
 func (r *BookRepo) List(ctx context.Context) ([]models.Book, error) {
-	return r.query(ctx, "SELECT * FROM books ORDER BY sort_title", nil)
+	return r.query(ctx, "SELECT "+bookColumns+" FROM books ORDER BY sort_title", nil)
 }
 
 func (r *BookRepo) ListByAuthor(ctx context.Context, authorID int64) ([]models.Book, error) {
-	return r.query(ctx, "SELECT * FROM books WHERE author_id = ? ORDER BY release_date", []any{authorID})
+	return r.query(ctx, "SELECT "+bookColumns+" FROM books WHERE author_id = ? ORDER BY release_date", []any{authorID})
 }
 
 func (r *BookRepo) ListByStatus(ctx context.Context, status string) ([]models.Book, error) {
-	return r.query(ctx, "SELECT * FROM books WHERE status = ? AND monitored = 1 ORDER BY sort_title", []any{status})
+	return r.query(ctx, "SELECT "+bookColumns+" FROM books WHERE status = ? AND monitored = 1 ORDER BY sort_title", []any{status})
 }
 
 func (r *BookRepo) GetByID(ctx context.Context, id int64) (*models.Book, error) {
-	books, err := r.query(ctx, "SELECT * FROM books WHERE id = ?", []any{id})
+	books, err := r.query(ctx, "SELECT "+bookColumns+" FROM books WHERE id = ?", []any{id})
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +47,7 @@ func (r *BookRepo) GetByID(ctx context.Context, id int64) (*models.Book, error) 
 }
 
 func (r *BookRepo) GetByForeignID(ctx context.Context, foreignID string) (*models.Book, error) {
-	books, err := r.query(ctx, "SELECT * FROM books WHERE foreign_id = ?", []any{foreignID})
+	books, err := r.query(ctx, "SELECT "+bookColumns+" FROM books WHERE foreign_id = ?", []any{foreignID})
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +106,12 @@ func (r *BookRepo) Update(ctx context.Context, b *models.Book) error {
 	return nil
 }
 
+func (r *BookRepo) SetFilePath(ctx context.Context, id int64, filePath string) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE books SET file_path=?, status=? WHERE id=?",
+		filePath, models.BookStatusImported, id)
+	return err
+}
+
 func (r *BookRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM books WHERE id=?", id)
 	return err
@@ -129,7 +140,7 @@ func (r *BookRepo) query(ctx context.Context, q string, args []any) ([]models.Bo
 			&b.OriginalTitle, &b.Description, &b.ImageURL, &b.ReleaseDate,
 			&genresStr, &b.AverageRating, &b.RatingsCount,
 			&monitored, &b.Status, &anyEditionOK, &b.SelectedEditionID,
-			&b.MetadataProvider, &b.LastMetadataRefreshAt,
+			&b.FilePath, &b.MetadataProvider, &b.LastMetadataRefreshAt,
 			&b.CreatedAt, &b.UpdatedAt,
 		)
 		if err != nil {

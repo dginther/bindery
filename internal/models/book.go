@@ -19,6 +19,7 @@ type Book struct {
 	Status                string     `json:"status"`
 	AnyEditionOK          bool       `json:"anyEditionOk"`
 	SelectedEditionID     *int64     `json:"selectedEditionId"`
+	FilePath              string     `json:"filePath"`
 	MetadataProvider      string     `json:"metadataProvider"`
 	LastMetadataRefreshAt *time.Time `json:"lastMetadataRefreshAt"`
 	CreatedAt             time.Time  `json:"createdAt"`
