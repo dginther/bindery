@@ -12,6 +12,7 @@ import (
 	"github.com/vavallee/bindery/internal/api"
 	"github.com/vavallee/bindery/internal/config"
 	"github.com/vavallee/bindery/internal/db"
+	"github.com/vavallee/bindery/internal/indexer"
 	"github.com/vavallee/bindery/internal/metadata"
 	"github.com/vavallee/bindery/internal/metadata/googlebooks"
 	"github.com/vavallee/bindery/internal/metadata/openlibrary"
@@ -41,7 +42,6 @@ func main() {
 	slog.Info("starting bindery",
 		"version", version,
 		"commit", commit,
-		"date", date,
 		"port", cfg.Port,
 	)
 
@@ -53,19 +53,29 @@ func main() {
 	}
 	defer database.Close()
 
+	// Repos
+	authorRepo := db.NewAuthorRepo(database)
+	bookRepo := db.NewBookRepo(database)
+	indexerRepo := db.NewIndexerRepo(database)
+	settingsRepo := db.NewSettingsRepo(database)
+
 	// Metadata providers
 	olClient := openlibrary.New()
 	var enrichers []metadata.Provider
-
-	// Google Books enricher (optional, needs API key from settings)
-	settingsRepo := db.NewSettingsRepo(database)
 	if setting, _ := settingsRepo.Get(nil, "google_books_api_key"); setting != nil && setting.Value != "" {
 		enrichers = append(enrichers, googlebooks.New(setting.Value))
 		slog.Info("google books enrichment enabled")
 	}
-
 	metaAgg := metadata.NewAggregator(olClient, enrichers...)
+
+	// Indexer searcher
+	idxSearcher := indexer.NewSearcher()
+
+	// API handlers
 	searchHandler := api.NewSearchHandler(metaAgg)
+	authorHandler := api.NewAuthorHandler(authorRepo, bookRepo, metaAgg)
+	bookHandler := api.NewBookHandler(bookRepo)
+	indexerHandler := api.NewIndexerHandler(indexerRepo, bookRepo, idxSearcher)
 
 	// Router
 	r := chi.NewRouter()
@@ -75,22 +85,47 @@ func main() {
 	r.Use(middleware.Compress(5))
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// System
 		r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"status":"ok","version":"` + version + `"}`))
 		})
-
 		r.Get("/system/status", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"version":"` + version + `","commit":"` + commit + `","buildDate":"` + date + `"}`))
 		})
 
-		// Metadata search (no DB writes, pure lookup)
+		// Metadata search
 		r.Get("/search/author", searchHandler.SearchAuthors)
 		r.Get("/search/book", searchHandler.SearchBooks)
 		r.Get("/book/lookup", searchHandler.LookupByISBN)
+
+		// Authors
+		r.Get("/author", authorHandler.List)
+		r.Post("/author", authorHandler.Create)
+		r.Get("/author/{id}", authorHandler.Get)
+		r.Put("/author/{id}", authorHandler.Update)
+		r.Delete("/author/{id}", authorHandler.Delete)
+		r.Post("/author/{id}/refresh", authorHandler.Refresh)
+
+		// Books
+		r.Get("/book", bookHandler.List)
+		r.Get("/book/{id}", bookHandler.Get)
+		r.Put("/book/{id}", bookHandler.Update)
+		r.Delete("/book/{id}", bookHandler.Delete)
+		r.Post("/book/{id}/search", indexerHandler.SearchBook)
+
+		// Wanted
+		r.Get("/wanted/missing", bookHandler.ListWanted)
+
+		// Indexers
+		r.Get("/indexer", indexerHandler.List)
+		r.Post("/indexer", indexerHandler.Create)
+		r.Get("/indexer/{id}", indexerHandler.Get)
+		r.Put("/indexer/{id}", indexerHandler.Update)
+		r.Delete("/indexer/{id}", indexerHandler.Delete)
+		r.Post("/indexer/{id}/test", indexerHandler.Test)
+		r.Get("/indexer/search", indexerHandler.SearchQuery)
 	})
 
 	// Serve embedded frontend
