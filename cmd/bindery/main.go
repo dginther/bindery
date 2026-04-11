@@ -90,7 +90,7 @@ func main() {
 	searchHandler := api.NewSearchHandler(metaAgg)
 	authorHandler := api.NewAuthorHandler(authorRepo, bookRepo, metaAgg)
 	bookHandler := api.NewBookHandler(bookRepo)
-	indexerHandler := api.NewIndexerHandler(indexerRepo, bookRepo, idxSearcher)
+	indexerHandler := api.NewIndexerHandler(indexerRepo, bookRepo, authorRepo, idxSearcher)
 	dlClientHandler := api.NewDownloadClientHandler(dlClientRepo)
 	queueHandler := api.NewQueueHandler(downloadRepo, dlClientRepo)
 

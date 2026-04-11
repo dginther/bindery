@@ -53,19 +53,27 @@ func (c *Client) Search(ctx context.Context, query string, categories []int) ([]
 }
 
 // BookSearch uses the book-specific search endpoint (t=book) if available.
+// Falls back to a combined "author title" generic search.
 func (c *Client) BookSearch(ctx context.Context, title, author string, categories []int) ([]SearchResult, error) {
-	cats := intSliceToCSV(categories)
-	u := fmt.Sprintf("%s/api?t=book&apikey=%s&title=%s&author=%s&cat=%s&limit=100",
-		c.baseURL, url.QueryEscape(c.apiKey),
-		url.QueryEscape(title), url.QueryEscape(author), cats)
+	// Try t=book first (not all indexers support this)
+	if author != "" {
+		cats := intSliceToCSV(categories)
+		u := fmt.Sprintf("%s/api?t=book&apikey=%s&title=%s&author=%s&cat=%s&limit=100",
+			c.baseURL, url.QueryEscape(c.apiKey),
+			url.QueryEscape(title), url.QueryEscape(author), cats)
 
-	var rss rssResponse
-	if err := c.getXML(ctx, u, &rss); err != nil {
-		// Fall back to generic search if book search not supported
-		return c.Search(ctx, fmt.Sprintf("%s %s", title, author), categories)
+		var rss rssResponse
+		if err := c.getXML(ctx, u, &rss); err == nil && len(rss.Channel.Items) > 0 && rss.Channel.Response.Total < 1000 {
+			return c.parseResults(rss.Channel.Items), nil
+		}
 	}
 
-	return c.parseResults(rss.Channel.Items), nil
+	// Fall back to generic search with "author title" combined
+	query := title
+	if author != "" {
+		query = author + " " + title
+	}
+	return c.Search(ctx, query, categories)
 }
 
 // Test verifies the indexer is reachable and the API key is valid.

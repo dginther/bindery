@@ -16,11 +16,12 @@ import (
 type IndexerHandler struct {
 	indexers *db.IndexerRepo
 	books    *db.BookRepo
+	authors  *db.AuthorRepo
 	searcher *indexer.Searcher
 }
 
-func NewIndexerHandler(indexers *db.IndexerRepo, books *db.BookRepo, searcher *indexer.Searcher) *IndexerHandler {
-	return &IndexerHandler{indexers: indexers, books: books, searcher: searcher}
+func NewIndexerHandler(indexers *db.IndexerRepo, books *db.BookRepo, authors *db.AuthorRepo, searcher *indexer.Searcher) *IndexerHandler {
+	return &IndexerHandler{indexers: indexers, books: books, authors: authors, searcher: searcher}
 }
 
 func (h *IndexerHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +131,13 @@ func (h *IndexerHandler) SearchBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results := h.searcher.SearchBook(r.Context(), idxs, book.Title, "")
+	// Resolve author name for better search results
+	authorName := ""
+	if author, err := h.authors.GetByID(r.Context(), book.AuthorID); err == nil && author != nil {
+		authorName = author.Name
+	}
+
+	results := h.searcher.SearchBook(r.Context(), idxs, book.Title, authorName)
 	writeJSON(w, http.StatusOK, results)
 }
 
