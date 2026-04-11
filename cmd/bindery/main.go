@@ -12,10 +12,12 @@ import (
 	"github.com/vavallee/bindery/internal/api"
 	"github.com/vavallee/bindery/internal/config"
 	"github.com/vavallee/bindery/internal/db"
+	"github.com/vavallee/bindery/internal/importer"
 	"github.com/vavallee/bindery/internal/indexer"
 	"github.com/vavallee/bindery/internal/metadata"
 	"github.com/vavallee/bindery/internal/metadata/googlebooks"
 	"github.com/vavallee/bindery/internal/metadata/openlibrary"
+	"github.com/vavallee/bindery/internal/scheduler"
 	"github.com/vavallee/bindery/internal/webui"
 )
 
@@ -72,6 +74,16 @@ func main() {
 
 	// Indexer searcher
 	idxSearcher := indexer.NewSearcher()
+
+	// Import scanner
+	namingTemplate := defaultNamingTemplate(settingsRepo)
+	importScanner := importer.NewScanner(downloadRepo, dlClientRepo, bookRepo, authorRepo, cfg.LibraryDir, namingTemplate)
+
+	// Scheduler
+	sched := scheduler.New(importScanner, idxSearcher, metaAgg,
+		authorRepo, bookRepo, indexerRepo, downloadRepo, dlClientRepo, settingsRepo)
+	sched.Start()
+	defer sched.Stop()
 
 	// API handlers
 	searchHandler := api.NewSearchHandler(metaAgg)
@@ -171,4 +183,11 @@ func main() {
 		slog.Error("server failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+func defaultNamingTemplate(settings *db.SettingsRepo) string {
+	if s, _ := settings.Get(nil, "naming_template"); s != nil && s.Value != "" {
+		return s.Value
+	}
+	return ""
 }

@@ -1,0 +1,192 @@
+package scheduler
+
+import (
+	"context"
+	"log/slog"
+
+	"github.com/robfig/cron/v3"
+
+	"github.com/vavallee/bindery/internal/db"
+	"github.com/vavallee/bindery/internal/importer"
+	"github.com/vavallee/bindery/internal/indexer"
+	"github.com/vavallee/bindery/internal/metadata"
+	"github.com/vavallee/bindery/internal/models"
+)
+
+// Scheduler runs background jobs on configurable intervals.
+type Scheduler struct {
+	cron     *cron.Cron
+	scanner  *importer.Scanner
+	searcher *indexer.Searcher
+	meta     *metadata.Aggregator
+
+	authors   *db.AuthorRepo
+	books     *db.BookRepo
+	indexers  *db.IndexerRepo
+	downloads *db.DownloadRepo
+	clients   *db.DownloadClientRepo
+	settings  *db.SettingsRepo
+}
+
+// New creates a new scheduler.
+func New(
+	scanner *importer.Scanner,
+	searcher *indexer.Searcher,
+	meta *metadata.Aggregator,
+	authors *db.AuthorRepo,
+	books *db.BookRepo,
+	indexers *db.IndexerRepo,
+	downloads *db.DownloadRepo,
+	clients *db.DownloadClientRepo,
+	settings *db.SettingsRepo,
+) *Scheduler {
+	return &Scheduler{
+		cron:      cron.New(cron.WithSeconds()),
+		scanner:   scanner,
+		searcher:  searcher,
+		meta:      meta,
+		authors:   authors,
+		books:     books,
+		indexers:  indexers,
+		downloads: downloads,
+		clients:   clients,
+		settings:  settings,
+	}
+}
+
+// Start registers and runs all background jobs.
+func (s *Scheduler) Start() {
+	// Check downloads every 60 seconds
+	s.cron.AddFunc("@every 60s", func() {
+		slog.Debug("job: check downloads")
+		s.scanner.CheckDownloads(context.Background())
+	})
+
+	// Search for wanted books every 12 hours
+	s.cron.AddFunc("@every 12h", func() {
+		slog.Info("job: search wanted books")
+		s.searchWanted()
+	})
+
+	// Refresh author metadata every 24 hours
+	s.cron.AddFunc("@every 24h", func() {
+		slog.Info("job: refresh metadata")
+		s.refreshMetadata()
+	})
+
+	// Scan library every 6 hours
+	s.cron.AddFunc("@every 6h", func() {
+		slog.Info("job: scan library")
+		s.scanner.ScanLibrary(context.Background())
+	})
+
+	s.cron.Start()
+	slog.Info("scheduler started", "jobs", len(s.cron.Entries()))
+}
+
+// Stop gracefully stops the scheduler.
+func (s *Scheduler) Stop() {
+	ctx := s.cron.Stop()
+	<-ctx.Done()
+	slog.Info("scheduler stopped")
+}
+
+func (s *Scheduler) searchWanted() {
+	ctx := context.Background()
+
+	wanted, err := s.books.ListByStatus(ctx, models.BookStatusWanted)
+	if err != nil {
+		slog.Error("failed to list wanted books", "error", err)
+		return
+	}
+	if len(wanted) == 0 {
+		return
+	}
+
+	idxs, err := s.indexers.List(ctx)
+	if err != nil {
+		slog.Error("failed to list indexers", "error", err)
+		return
+	}
+
+	client, err := s.clients.GetFirstEnabled(ctx)
+	if err != nil || client == nil {
+		slog.Debug("no download client available, skipping wanted search")
+		return
+	}
+
+	for _, book := range wanted {
+		results := s.searcher.SearchBook(ctx, idxs, book.Title, "")
+		if len(results) == 0 {
+			continue
+		}
+
+		// Auto-grab the top result
+		best := results[0]
+		slog.Info("auto-grabbing wanted book",
+			"book", book.Title,
+			"result", best.Title,
+			"indexer", best.IndexerName,
+			"size", best.Size,
+		)
+
+		dl := &models.Download{
+			GUID:             best.GUID,
+			BookID:           &book.ID,
+			IndexerID:        &best.IndexerID,
+			DownloadClientID: &client.ID,
+			Title:            best.Title,
+			NZBURL:           best.NZBURL,
+			Size:             best.Size,
+			Status:           models.DownloadStatusQueued,
+			Protocol:         "usenet",
+		}
+
+		// Check for duplicate
+		existing, _ := s.downloads.GetByGUID(ctx, best.GUID)
+		if existing != nil {
+			continue
+		}
+
+		if err := s.downloads.Create(ctx, dl); err != nil {
+			slog.Error("failed to create download record", "error", err)
+			continue
+		}
+
+		// TODO: send to SABnzbd (reuse queue handler logic)
+		// For now, mark as queued for manual grab
+	}
+}
+
+func (s *Scheduler) refreshMetadata() {
+	ctx := context.Background()
+
+	authors, err := s.authors.List(ctx)
+	if err != nil {
+		slog.Error("failed to list authors", "error", err)
+		return
+	}
+
+	for _, author := range authors {
+		if !author.Monitored {
+			continue
+		}
+
+		updated, err := s.meta.GetAuthor(ctx, author.ForeignID)
+		if err != nil {
+			slog.Warn("failed to refresh author", "author", author.Name, "error", err)
+			continue
+		}
+
+		// Update changed fields
+		author.Description = updated.Description
+		if updated.ImageURL != "" {
+			author.ImageURL = updated.ImageURL
+		}
+		author.AverageRating = updated.AverageRating
+		author.RatingsCount = updated.RatingsCount
+		s.authors.Update(ctx, &author)
+
+		slog.Debug("refreshed author", "author", author.Name)
+	}
+}
