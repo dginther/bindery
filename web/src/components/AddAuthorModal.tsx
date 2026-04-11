@@ -1,0 +1,104 @@
+import { useState } from 'react'
+import { api, Author } from '../api/client'
+
+interface Props {
+  onClose: () => void
+  onAdded: () => void
+}
+
+export default function AddAuthorModal({ onClose, onAdded }: Props) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Author[]>([])
+  const [searching, setSearching] = useState(false)
+  const [adding, setAdding] = useState<string | null>(null)
+
+  const search = async () => {
+    if (!query.trim()) return
+    setSearching(true)
+    try {
+      const authors = await api.searchAuthors(query)
+      setResults(authors)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const addAuthor = async (author: Author) => {
+    setAdding(author.foreignAuthorId)
+    try {
+      await api.addAuthor({
+        foreignAuthorId: author.foreignAuthorId,
+        authorName: author.authorName,
+        monitored: true,
+        searchOnAdd: true,
+      })
+      onAdded()
+      onClose()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to add author')
+    } finally {
+      setAdding(null)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-start justify-center pt-24 z-50" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-lg mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b border-zinc-800">
+          <h3 className="text-lg font-semibold">Add Author</h3>
+        </div>
+
+        <div className="p-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && search()}
+              placeholder="Search by author name..."
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+              autoFocus
+            />
+            <button
+              onClick={search}
+              disabled={searching}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-md text-sm font-medium"
+            >
+              {searching ? 'Searching...' : 'Search'}
+            </button>
+          </div>
+
+          <div className="mt-4 max-h-80 overflow-y-auto space-y-2">
+            {results.map(author => (
+              <div
+                key={author.foreignAuthorId}
+                className="flex items-center justify-between p-3 rounded-md bg-zinc-800/50 hover:bg-zinc-800"
+              >
+                <div>
+                  <div className="font-medium text-sm">{author.authorName}</div>
+                  <div className="text-xs text-zinc-500">ID: {author.foreignAuthorId}</div>
+                </div>
+                <button
+                  onClick={() => addAuthor(author)}
+                  disabled={adding === author.foreignAuthorId}
+                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded text-xs font-medium"
+                >
+                  {adding === author.foreignAuthorId ? 'Adding...' : 'Add'}
+                </button>
+              </div>
+            ))}
+            {results.length === 0 && !searching && query && (
+              <p className="text-sm text-zinc-500 text-center py-4">No results found</p>
+            )}
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-zinc-800 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-zinc-400 hover:text-white">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
