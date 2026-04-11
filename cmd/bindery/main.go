@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -66,7 +67,7 @@ func main() {
 	// Metadata providers
 	olClient := openlibrary.New()
 	var enrichers []metadata.Provider
-	if setting, _ := settingsRepo.Get(nil, "google_books_api_key"); setting != nil && setting.Value != "" {
+	if setting, _ := settingsRepo.Get(context.Background(), "google_books_api_key"); setting != nil && setting.Value != "" {
 		enrichers = append(enrichers, googlebooks.New(setting.Value))
 		slog.Info("google books enrichment enabled")
 	}
@@ -186,7 +187,7 @@ func main() {
 }
 
 func defaultNamingTemplate(settings *db.SettingsRepo) string {
-	if s, _ := settings.Get(nil, "naming_template"); s != nil && s.Value != "" {
+	if s, _ := settings.Get(context.Background(), "naming_template"); s != nil && s.Value != "" {
 		return s.Value
 	}
 	return ""
