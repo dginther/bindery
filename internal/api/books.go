@@ -81,6 +81,7 @@ func (h *BookHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Monitored *bool   `json:"monitored"`
 		Status    *string `json:"status"`
+		FilePath  *string `json:"filePath"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -91,6 +92,9 @@ func (h *BookHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Status != nil {
 		book.Status = *req.Status
+	}
+	if req.FilePath != nil {
+		book.FilePath = *req.FilePath
 	}
 
 	if err := h.books.Update(r.Context(), book); err != nil {

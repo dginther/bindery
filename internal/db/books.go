@@ -93,12 +93,12 @@ func (r *BookRepo) Update(ctx context.Context, b *models.Book) error {
 		UPDATE books SET title=?, sort_title=?, original_title=?, description=?, image_url=?,
 		                 release_date=?, genres=?, average_rating=?, ratings_count=?,
 		                 monitored=?, status=?, any_edition_ok=?, selected_edition_id=?,
-		                 metadata_provider=?, last_metadata_refresh_at=?, updated_at=?
+		                 file_path=?, metadata_provider=?, last_metadata_refresh_at=?, updated_at=?
 		WHERE id=?`,
 		b.Title, b.SortTitle, b.OriginalTitle, b.Description, b.ImageURL,
 		b.ReleaseDate, string(genresJSON), b.AverageRating, b.RatingsCount,
 		b.Monitored, b.Status, b.AnyEditionOK, b.SelectedEditionID,
-		b.MetadataProvider, b.LastMetadataRefreshAt, now, b.ID)
+		b.FilePath, b.MetadataProvider, b.LastMetadataRefreshAt, now, b.ID)
 	if err != nil {
 		return fmt.Errorf("update book %d: %w", b.ID, err)
 	}
