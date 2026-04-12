@@ -294,6 +294,10 @@ Contributions welcome. Please:
 3. Ensure `go test ./...` passes and `cd web && npm run build` succeeds
 4. Open a Pull Request
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## License
 
 MIT. See [LICENSE](LICENSE) for details.
