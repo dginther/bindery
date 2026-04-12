@@ -17,6 +17,9 @@ export default function SettingsPage() {
   const [showAddIndexer, setShowAddIndexer] = useState(false)
   const [showAddClient, setShowAddClient] = useState(false)
   const [showAddNotification, setShowAddNotification] = useState(false)
+  const [editingIndexer, setEditingIndexer] = useState<number | null>(null)
+  const [editingClient, setEditingClient] = useState<number | null>(null)
+  const [editingNotification, setEditingNotification] = useState<number | null>(null)
 
   useEffect(() => {
     api.listIndexers().then(setIndexers).catch(console.error)
@@ -60,38 +63,57 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-2">
               {indexers.map(idx => (
-                <div key={idx.id} className="flex items-center justify-between p-4 border border-zinc-800 rounded-lg bg-zinc-900">
-                  <div>
-                    <h4 className="font-medium text-sm">{idx.name}</h4>
-                    <p className="text-xs text-zinc-500">{idx.url}</p>
+                <div key={idx.id}>
+                  <div className="flex items-center justify-between p-4 border border-zinc-800 rounded-lg bg-zinc-900">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <button
+                        onClick={async () => {
+                          const updated = await api.updateIndexer(idx.id, { ...idx, enabled: !idx.enabled })
+                          setIndexers(indexers.map(i => i.id === idx.id ? updated : i))
+                        }}
+                        className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${idx.enabled ? 'bg-emerald-600' : 'bg-zinc-700'}`}
+                        title={idx.enabled ? 'Disable' : 'Enable'}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${idx.enabled ? 'translate-x-4' : ''}`} />
+                      </button>
+                      <div className="min-w-0">
+                        <h4 className={`font-medium text-sm ${!idx.enabled ? 'text-zinc-500' : ''}`}>{idx.name}</h4>
+                        <p className="text-xs text-zinc-500 truncate">{idx.url}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <button onClick={() => setEditingIndexer(editingIndexer === idx.id ? null : idx.id)} className="text-xs text-zinc-400 hover:text-white">Edit</button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.testIndexer(idx.id)
+                            alert('Connection successful!')
+                          } catch (err: unknown) {
+                            alert('Test failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+                          }
+                        }}
+                        className="text-xs text-zinc-400 hover:text-white"
+                      >
+                        Test
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await api.deleteIndexer(idx.id)
+                          setIndexers(indexers.filter(i => i.id !== idx.id))
+                        }}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`text-xs ${idx.enabled ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                      {idx.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
-                    <button
-                      onClick={async () => {
-                        try {
-                          await api.testIndexer(idx.id)
-                          alert('Connection successful!')
-                        } catch (err: unknown) {
-                          alert('Test failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
-                        }
-                      }}
-                      className="text-xs text-zinc-400 hover:text-white"
-                    >
-                      Test
-                    </button>
-                    <button
-                      onClick={async () => {
-                        await api.deleteIndexer(idx.id)
-                        setIndexers(indexers.filter(i => i.id !== idx.id))
-                      }}
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  {editingIndexer === idx.id && (
+                    <EditIndexerForm
+                      indexer={idx}
+                      onClose={() => setEditingIndexer(null)}
+                      onSaved={(updated) => { setIndexers(indexers.map(i => i.id === updated.id ? updated : i)); setEditingIndexer(null) }}
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -119,38 +141,57 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-2">
               {clients.map(c => (
-                <div key={c.id} className="flex items-center justify-between p-4 border border-zinc-800 rounded-lg bg-zinc-900">
-                  <div>
-                    <h4 className="font-medium text-sm">{c.name}</h4>
-                    <p className="text-xs text-zinc-500">{c.host}:{c.port} ({c.category})</p>
+                <div key={c.id}>
+                  <div className="flex items-center justify-between p-4 border border-zinc-800 rounded-lg bg-zinc-900">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <button
+                        onClick={async () => {
+                          const updated = await api.updateDownloadClient(c.id, { ...c, enabled: !c.enabled })
+                          setClients(clients.map(x => x.id === c.id ? updated : x))
+                        }}
+                        className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${c.enabled ? 'bg-emerald-600' : 'bg-zinc-700'}`}
+                        title={c.enabled ? 'Disable' : 'Enable'}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${c.enabled ? 'translate-x-4' : ''}`} />
+                      </button>
+                      <div className="min-w-0">
+                        <h4 className={`font-medium text-sm ${!c.enabled ? 'text-zinc-500' : ''}`}>{c.name}</h4>
+                        <p className="text-xs text-zinc-500">{c.host}:{c.port} ({c.category})</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <button onClick={() => setEditingClient(editingClient === c.id ? null : c.id)} className="text-xs text-zinc-400 hover:text-white">Edit</button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.testDownloadClient(c.id)
+                            alert('Connection successful!')
+                          } catch (err: unknown) {
+                            alert('Test failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+                          }
+                        }}
+                        className="text-xs text-zinc-400 hover:text-white"
+                      >
+                        Test
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await api.deleteDownloadClient(c.id)
+                          setClients(clients.filter(x => x.id !== c.id))
+                        }}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`text-xs ${c.enabled ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                      {c.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
-                    <button
-                      onClick={async () => {
-                        try {
-                          await api.testDownloadClient(c.id)
-                          alert('Connection successful!')
-                        } catch (err: unknown) {
-                          alert('Test failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
-                        }
-                      }}
-                      className="text-xs text-zinc-400 hover:text-white"
-                    >
-                      Test
-                    </button>
-                    <button
-                      onClick={async () => {
-                        await api.deleteDownloadClient(c.id)
-                        setClients(clients.filter(x => x.id !== c.id))
-                      }}
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  {editingClient === c.id && (
+                    <EditClientForm
+                      client={c}
+                      onClose={() => setEditingClient(null)}
+                      onSaved={(updated) => { setClients(clients.map(x => x.id === updated.id ? updated : x)); setEditingClient(null) }}
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -178,47 +219,66 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-2">
               {notifications.map(n => (
-                <div key={n.id} className="p-4 border border-zinc-800 rounded-lg bg-zinc-900">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h4 className="font-medium text-sm">{n.name}</h4>
-                      <p className="text-xs text-zinc-500 truncate mt-0.5">{n.url}</p>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {n.onGrab && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">On Grab</span>}
-                        {n.onImport && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">On Import</span>}
-                        {n.onUpgrade && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">On Upgrade</span>}
-                        {n.onFailure && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">On Failure</span>}
-                        {n.onHealth && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">On Health</span>}
+                <div key={n.id}>
+                  <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <button
+                          onClick={async () => {
+                            const updated = await api.updateNotification(n.id, { ...n, enabled: !n.enabled })
+                            setNotifications(notifications.map(x => x.id === n.id ? updated : x))
+                          }}
+                          className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 mt-0.5 ${n.enabled ? 'bg-emerald-600' : 'bg-zinc-700'}`}
+                          title={n.enabled ? 'Disable' : 'Enable'}
+                        >
+                          <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${n.enabled ? 'translate-x-4' : ''}`} />
+                        </button>
+                        <div className="min-w-0">
+                          <h4 className={`font-medium text-sm ${!n.enabled ? 'text-zinc-500' : ''}`}>{n.name}</h4>
+                          <p className="text-xs text-zinc-500 truncate mt-0.5">{n.url}</p>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {n.onGrab && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">On Grab</span>}
+                            {n.onImport && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">On Import</span>}
+                            {n.onUpgrade && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">On Upgrade</span>}
+                            {n.onFailure && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">On Failure</span>}
+                            {n.onHealth && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">On Health</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <button onClick={() => setEditingNotification(editingNotification === n.id ? null : n.id)} className="text-xs text-zinc-400 hover:text-white">Edit</button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await api.testNotification(n.id)
+                              alert('Test notification sent!')
+                            } catch (err: unknown) {
+                              alert('Test failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+                            }
+                          }}
+                          className="text-xs text-zinc-400 hover:text-white"
+                        >
+                          Test
+                        </button>
+                        <button
+                          onClick={async () => {
+                            await api.deleteNotification(n.id)
+                            setNotifications(notifications.filter(x => x.id !== n.id))
+                          }}
+                          className="text-xs text-red-400 hover:text-red-300"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className={`text-xs ${n.enabled ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                        {n.enabled ? 'Enabled' : 'Disabled'}
-                      </span>
-                      <button
-                        onClick={async () => {
-                          try {
-                            await api.testNotification(n.id)
-                            alert('Test notification sent!')
-                          } catch (err: unknown) {
-                            alert('Test failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
-                          }
-                        }}
-                        className="text-xs text-zinc-400 hover:text-white"
-                      >
-                        Test
-                      </button>
-                      <button
-                        onClick={async () => {
-                          await api.deleteNotification(n.id)
-                          setNotifications(notifications.filter(x => x.id !== n.id))
-                        }}
-                        className="text-xs text-red-400 hover:text-red-300"
-                      >
-                        Delete
-                      </button>
-                    </div>
                   </div>
+                  {editingNotification === n.id && (
+                    <EditNotificationForm
+                      notification={n}
+                      onClose={() => setEditingNotification(null)}
+                      onSaved={(updated) => { setNotifications(notifications.map(x => x.id === updated.id ? updated : x)); setEditingNotification(null) }}
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -478,6 +538,109 @@ function GeneralTab() {
           )}
         </div>
       </section>
+    </div>
+  )
+}
+
+function EditIndexerForm({ indexer, onClose, onSaved }: { indexer: Indexer; onClose: () => void; onSaved: (idx: Indexer) => void }) {
+  const [name, setName] = useState(indexer.name)
+  const [url, setUrl] = useState(indexer.url)
+  const [apiKey, setApiKey] = useState(indexer.apiKey)
+
+  const submit = async () => {
+    const updated = await api.updateIndexer(indexer.id, { ...indexer, name, url, apiKey })
+    onSaved(updated)
+  }
+
+  return (
+    <div className="mt-1 p-4 border border-zinc-700 rounded-lg bg-zinc-800/50 space-y-3">
+      <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" className={inputCls} />
+      <input value={url} onChange={e => setUrl(e.target.value)} placeholder="URL" className={inputCls} />
+      <input value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="API Key" type="password" className={inputCls} />
+      <div className="flex gap-2 justify-end">
+        <button onClick={onClose} className="px-3 py-1.5 text-sm text-zinc-400">Cancel</button>
+        <button onClick={submit} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm font-medium">Save</button>
+      </div>
+    </div>
+  )
+}
+
+function EditClientForm({ client, onClose, onSaved }: { client: DownloadClient; onClose: () => void; onSaved: (c: DownloadClient) => void }) {
+  const [name, setName] = useState(client.name)
+  const [host, setHost] = useState(client.host)
+  const [port, setPort] = useState(String(client.port))
+  const [apiKey, setApiKey] = useState(client.apiKey)
+  const [category, setCategory] = useState(client.category)
+
+  const submit = async () => {
+    const updated = await api.updateDownloadClient(client.id, { ...client, name, host, port: parseInt(port), apiKey, category })
+    onSaved(updated)
+  }
+
+  return (
+    <div className="mt-1 p-4 border border-zinc-700 rounded-lg bg-zinc-800/50 space-y-3">
+      <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" className={inputCls} />
+      <div className="flex gap-2">
+        <input value={host} onChange={e => setHost(e.target.value)} placeholder="Host" className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-zinc-600" />
+        <input value={port} onChange={e => setPort(e.target.value)} placeholder="Port" className="w-24 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-zinc-600" />
+      </div>
+      <input value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="API Key" type="password" className={inputCls} />
+      <input value={category} onChange={e => setCategory(e.target.value)} placeholder="Category" className={inputCls} />
+      <div className="flex gap-2 justify-end">
+        <button onClick={onClose} className="px-3 py-1.5 text-sm text-zinc-400">Cancel</button>
+        <button onClick={submit} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm font-medium">Save</button>
+      </div>
+    </div>
+  )
+}
+
+function EditNotificationForm({ notification, onClose, onSaved }: { notification: NotificationConfig; onClose: () => void; onSaved: (n: NotificationConfig) => void }) {
+  const [name, setName] = useState(notification.name)
+  const [url, setUrl] = useState(notification.url)
+  const [method, setMethod] = useState(notification.method || 'POST')
+  const [onGrab, setOnGrab] = useState(notification.onGrab)
+  const [onImport, setOnImport] = useState(notification.onImport)
+  const [onFailure, setOnFailure] = useState(notification.onFailure)
+  const [onUpgrade, setOnUpgrade] = useState(notification.onUpgrade)
+  const [onHealth, setOnHealth] = useState(notification.onHealth)
+
+  const submit = async () => {
+    const updated = await api.updateNotification(notification.id, { ...notification, name, url, method, onGrab, onImport, onFailure, onUpgrade, onHealth })
+    onSaved(updated)
+  }
+
+  const toggleCls = (active: boolean) =>
+    `px-3 py-1.5 rounded text-xs font-medium border transition-colors cursor-pointer select-none ${
+      active
+        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+        : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+    }`
+
+  return (
+    <div className="mt-1 p-4 border border-zinc-700 rounded-lg bg-zinc-800/50 space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" className={inputCls} />
+        <select value={method} onChange={e => setMethod(e.target.value)} className={inputCls}>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="GET">GET</option>
+        </select>
+      </div>
+      <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Webhook URL" className={inputCls} />
+      <div>
+        <p className="text-xs text-zinc-400 mb-2">Trigger on:</p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setOnGrab(!onGrab)} className={toggleCls(onGrab)}>Grab</button>
+          <button type="button" onClick={() => setOnImport(!onImport)} className={toggleCls(onImport)}>Import</button>
+          <button type="button" onClick={() => setOnFailure(!onFailure)} className={toggleCls(onFailure)}>Failure</button>
+          <button type="button" onClick={() => setOnUpgrade(!onUpgrade)} className={toggleCls(onUpgrade)}>Upgrade</button>
+          <button type="button" onClick={() => setOnHealth(!onHealth)} className={toggleCls(onHealth)}>Health</button>
+        </div>
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button onClick={onClose} className="px-3 py-1.5 text-sm text-zinc-400">Cancel</button>
+        <button onClick={submit} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm font-medium">Save</button>
+      </div>
     </div>
   )
 }
