@@ -37,6 +37,19 @@ type authorSearchDoc struct {
 	RatingsCount int     `json:"ratings_count"`
 }
 
+type authorWorksResponse struct {
+	Size    int              `json:"size"`
+	Entries []authorWorkEntry `json:"entries"`
+}
+
+type authorWorkEntry struct {
+	Key         string      `json:"key"` // "/works/OL123W"
+	Title       string      `json:"title"`
+	Description interface{} `json:"description"`
+	Covers      []int       `json:"covers"`
+	Subjects    []string    `json:"subjects"`
+}
+
 type workResponse struct {
 	Key         string        `json:"key"`         // "/works/OL123W"
 	Title       string        `json:"title"`

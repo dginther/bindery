@@ -188,7 +188,8 @@ func (h *AuthorHandler) fetchAuthorBooks(author *models.Author) {
 	ctx := contextBackground()
 	slog.Info("fetching books for author", "author", author.Name, "foreignId", author.ForeignID)
 
-	books, err := h.meta.SearchBooks(ctx, author.Name)
+	// Use the dedicated author works endpoint for accurate results
+	books, err := h.meta.GetAuthorWorks(ctx, author.ForeignID)
 	if err != nil {
 		slog.Error("failed to fetch books", "author", author.Name, "error", err)
 		return
@@ -203,10 +204,6 @@ func (h *AuthorHandler) fetchAuthorBooks(author *models.Author) {
 
 	var added int
 	for _, b := range books {
-		// Only add books by this author
-		if b.Author == nil || b.Author.ForeignID != author.ForeignID {
-			continue
-		}
 		b.AuthorID = author.ID
 		b.Monitored = author.Monitored
 

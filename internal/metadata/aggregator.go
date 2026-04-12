@@ -48,6 +48,30 @@ func (a *Aggregator) GetAuthor(ctx context.Context, foreignID string) (*models.A
 	return author, nil
 }
 
+// GetAuthorWorks fetches all works by an author using the dedicated OL endpoint.
+func (a *Aggregator) GetAuthorWorks(ctx context.Context, authorForeignID string) ([]models.Book, error) {
+	key := "authorworks:" + authorForeignID
+	if cached, ok := a.cache.get(key); ok {
+		return cached.([]models.Book), nil
+	}
+
+	// Use the OL-specific method if available
+	type worksProvider interface {
+		GetAuthorWorks(ctx context.Context, authorForeignID string) ([]models.Book, error)
+	}
+	if wp, ok := a.primary.(worksProvider); ok {
+		books, err := wp.GetAuthorWorks(ctx, authorForeignID)
+		if err != nil {
+			return nil, err
+		}
+		a.cache.set(key, books)
+		return books, nil
+	}
+
+	// Fallback to search
+	return a.primary.SearchBooks(ctx, authorForeignID)
+}
+
 func (a *Aggregator) GetBook(ctx context.Context, foreignID string) (*models.Book, error) {
 	key := "book:" + foreignID
 	if cached, ok := a.cache.get(key); ok {

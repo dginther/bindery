@@ -169,6 +169,41 @@ func (c *Client) GetBook(ctx context.Context, foreignID string) (*models.Book, e
 	return b, nil
 }
 
+// GetAuthorWorks fetches all works by an author using the dedicated author works endpoint.
+// This is much more reliable than searching by author name.
+func (c *Client) GetAuthorWorks(ctx context.Context, authorForeignID string) ([]models.Book, error) {
+	u := fmt.Sprintf("%s/authors/%s/works.json?limit=100", baseURL, authorForeignID)
+	var resp authorWorksResponse
+	if err := c.getJSON(ctx, u, &resp); err != nil {
+		return nil, fmt.Errorf("get author works %s: %w", authorForeignID, err)
+	}
+
+	books := make([]models.Book, 0, len(resp.Entries))
+	for _, entry := range resp.Entries {
+		workID := strings.TrimPrefix(entry.Key, "/works/")
+		b := models.Book{
+			ForeignID:        workID,
+			Title:            entry.Title,
+			SortTitle:        entry.Title,
+			Description:      extractText(entry.Description),
+			Genres:           truncateSlice(entry.Subjects, 10),
+			MetadataProvider: "openlibrary",
+			Monitored:        true,
+			Status:           models.BookStatusWanted,
+		}
+		if len(entry.Covers) > 0 && entry.Covers[0] > 0 {
+			b.ImageURL = fmt.Sprintf("%s/b/id/%d-L.jpg", coverURL, entry.Covers[0])
+		}
+		// Set author reference
+		b.Author = &models.Author{
+			ForeignID:        authorForeignID,
+			MetadataProvider: "openlibrary",
+		}
+		books = append(books, b)
+	}
+	return books, nil
+}
+
 func (c *Client) GetEditions(ctx context.Context, bookForeignID string) ([]models.Edition, error) {
 	u := fmt.Sprintf("%s/works/%s/editions.json?limit=50", baseURL, bookForeignID)
 	var resp editionsResponse
