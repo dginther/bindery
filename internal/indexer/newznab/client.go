@@ -53,7 +53,7 @@ func (c *Client) Search(ctx context.Context, query string, categories []int) ([]
 }
 
 // BookSearch uses the book-specific search endpoint (t=book) if available.
-// Falls back to a combined "author title" generic search.
+// Falls back to "author title" combined search, then title-only if that yields nothing.
 func (c *Client) BookSearch(ctx context.Context, title, author string, categories []int) ([]SearchResult, error) {
 	// Try t=book first (not all indexers support this)
 	if author != "" {
@@ -68,12 +68,16 @@ func (c *Client) BookSearch(ctx context.Context, title, author string, categorie
 		}
 	}
 
-	// Fall back to generic search with "author title" combined
-	query := title
+	// Try "author title" combined generic search
 	if author != "" {
-		query = author + " " + title
+		results, err := c.Search(ctx, author+" "+title, categories)
+		if err == nil && len(results) > 0 {
+			return results, nil
+		}
 	}
-	return c.Search(ctx, query, categories)
+
+	// Fall back to title-only — catches releases filed without the author name
+	return c.Search(ctx, title, categories)
 }
 
 // Test verifies the indexer is reachable and the API key is valid.
