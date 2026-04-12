@@ -89,9 +89,9 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME}"
           NOTES=$(awk -v ver="## [${VERSION}]" '
-            $0 ~ ver        { found=1; next }
-            found && /^## / { exit }
-            found           { print }
+            index($0, ver) == 1           { found=1; next }
+            found && index($0, "## ") == 1 { exit }
+            found                         { print }
           ' CHANGELOG.md)
 
           if [ -z "$NOTES" ]; then
@@ -119,7 +119,7 @@ jobs:
           go-version: "1.25.9"
       - uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.1.6
+          version: v2.11.4
           args: --timeout=5m
       - name: govulncheck
         run: |
