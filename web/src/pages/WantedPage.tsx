@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, Book, SearchResult } from '../api/client'
+import Pagination, { usePagination } from '../components/Pagination'
 
 export default function WantedPage() {
   const [books, setBooks] = useState<Book[]>([])
@@ -43,6 +44,8 @@ export default function WantedPage() {
     }
   }
 
+  const { pageItems, paginationProps } = usePagination(books, 50)
+
   const formatSize = (bytes: number) => {
     if (bytes > 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB'
     if (bytes > 1048576) return (bytes / 1048576).toFixed(1) + ' MB'
@@ -61,7 +64,7 @@ export default function WantedPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {books.map(book => (
+          {pageItems.map(book => (
             <div key={book.id}>
               <div className="flex items-center justify-between p-3 border border-zinc-800 rounded-lg bg-zinc-900">
                 <div className="flex items-center gap-3 min-w-0">
@@ -106,6 +109,7 @@ export default function WantedPage() {
           ))}
         </div>
       )}
+      <Pagination {...paginationProps} />
     </div>
   )
 }

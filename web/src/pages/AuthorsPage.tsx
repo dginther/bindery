@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { api, Author } from '../api/client'
 import AddAuthorModal from '../components/AddAuthorModal'
+import Pagination, { usePagination } from '../components/Pagination'
 
 type SortMode = 'az' | 'za' | 'recent'
 
@@ -43,6 +44,10 @@ export default function AuthorsPage() {
     // 'recent' keeps server order (typically by id desc)
     return list
   }, [authors, search, sort])
+
+  const { pageItems, paginationProps, reset } = usePagination(filtered, 50)
+
+  useEffect(() => { reset() }, [search, sort])
 
   const sortBtnCls = (active: boolean) =>
     `px-3 py-1 rounded-md text-xs font-medium transition-colors ${active ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'}`
@@ -88,7 +93,7 @@ export default function AuthorsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(author => (
+          {pageItems.map(author => (
             <div key={author.id} className="border border-zinc-800 rounded-lg bg-zinc-900 overflow-hidden">
               <div className="flex gap-3 p-4">
                 {author.imageUrl ? (
@@ -132,6 +137,7 @@ export default function AuthorsPage() {
           ))}
         </div>
       )}
+      <Pagination {...paginationProps} />
 
       {showAdd && <AddAuthorModal onClose={() => setShowAdd(false)} onAdded={load} />}
     </div>

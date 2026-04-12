@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, HistoryEvent } from '../api/client'
+import Pagination, { usePagination } from '../components/Pagination'
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   grabbed: 'bg-blue-500/20 text-blue-400',
@@ -52,6 +53,10 @@ export default function HistoryPage() {
 
   const eventTypes = Array.from(new Set(events.map(e => e.eventType))).sort()
 
+  const { pageItems, paginationProps, reset } = usePagination(events, 100)
+
+  useEffect(() => { reset() }, [typeFilter])
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -86,7 +91,7 @@ export default function HistoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
-              {events.map(event => {
+              {pageItems.map(event => {
                 const parsed = parseEventData(event.data)
                 const detail = parsed.message || parsed.path || ''
                 const isError = event.eventType === 'downloadFailed' || event.eventType === 'importFailed'
@@ -125,6 +130,7 @@ export default function HistoryPage() {
           </table>
         </div>
       )}
+      <Pagination {...paginationProps} />
     </div>
   )
 }

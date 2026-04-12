@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, BlocklistEntry } from '../api/client'
+import Pagination, { usePagination } from '../components/Pagination'
 
 function formatDate(s: string) {
   return new Date(s).toLocaleString(undefined, {
@@ -61,6 +62,8 @@ export default function BlocklistPage() {
 
   const allSelected = entries.length > 0 && selected.size === entries.length
 
+  const { pageItems, paginationProps } = usePagination(entries, 50)
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -106,7 +109,7 @@ export default function BlocklistPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
-              {entries.map(entry => (
+              {pageItems.map(entry => (
                 <tr key={entry.id} className={`transition-colors hover:bg-zinc-800/50 ${selected.has(entry.id) ? 'bg-zinc-800/30' : 'bg-zinc-900/50'}`}>
                   <td className="px-4 py-3">
                     <input
@@ -144,6 +147,7 @@ export default function BlocklistPage() {
           </table>
         </div>
       )}
+      <Pagination {...paginationProps} />
     </div>
   )
 }

@@ -1,0 +1,103 @@
+import { useMemo, useState } from 'react'
+
+interface Props {
+  page: number
+  totalPages: number
+  pageSize: number
+  totalItems: number
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
+  pageSizeOptions?: number[]
+}
+
+export default function Pagination({
+  page, totalPages, pageSize, totalItems,
+  onPageChange, onPageSizeChange,
+  pageSizeOptions = [25, 50, 100, 250],
+}: Props) {
+  if (totalItems === 0) return null
+
+  const start = (page - 1) * pageSize + 1
+  const end = Math.min(page * pageSize, totalItems)
+
+  // Compute visible page numbers (with ellipsis for large ranges)
+  const pages: (number | 'ellipsis')[] = []
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i)
+  } else {
+    pages.push(1)
+    if (page > 3) pages.push('ellipsis')
+    const startP = Math.max(2, page - 1)
+    const endP = Math.min(totalPages - 1, page + 1)
+    for (let i = startP; i <= endP; i++) pages.push(i)
+    if (page < totalPages - 2) pages.push('ellipsis')
+    pages.push(totalPages)
+  }
+
+  const btnBase = 'px-2.5 py-1 rounded text-xs font-medium transition-colors'
+  const btn = `${btnBase} text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed`
+  const btnActive = `${btnBase} bg-zinc-700 text-white`
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-6 pt-4 border-t border-zinc-800">
+      <div className="text-xs text-zinc-500">
+        {start}–{end} of {totalItems}
+      </div>
+      <div className="flex items-center gap-1">
+        <button onClick={() => onPageChange(1)} disabled={page === 1} className={btn}>« First</button>
+        <button onClick={() => onPageChange(page - 1)} disabled={page === 1} className={btn}>‹ Prev</button>
+        {pages.map((p, i) =>
+          p === 'ellipsis' ? (
+            <span key={`e${i}`} className="px-1 text-xs text-zinc-600">…</span>
+          ) : (
+            <button key={p} onClick={() => onPageChange(p)} className={p === page ? btnActive : btn}>
+              {p}
+            </button>
+          )
+        )}
+        <button onClick={() => onPageChange(page + 1)} disabled={page === totalPages} className={btn}>Next ›</button>
+        <button onClick={() => onPageChange(totalPages)} disabled={page === totalPages} className={btn}>Last »</button>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-zinc-500">Per page:</span>
+        <select
+          value={pageSize}
+          onChange={e => onPageSizeChange(Number(e.target.value))}
+          className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-zinc-600"
+        >
+          {pageSizeOptions.map(n => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * usePagination: client-side slicing helper.
+ * Pass the full filtered list; get back the visible page + props for Pagination.
+ */
+export function usePagination<T>(items: T[], defaultPageSize = 50) {
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(defaultPageSize)
+
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const paged = useMemo(() => items.slice((safePage - 1) * pageSize, safePage * pageSize), [items, safePage, pageSize])
+
+  const reset = () => setPage(1)
+
+  return {
+    pageItems: paged,
+    paginationProps: {
+      page: safePage,
+      totalPages,
+      pageSize,
+      totalItems: items.length,
+      onPageChange: setPage,
+      onPageSizeChange: (size: number) => { setPageSize(size); setPage(1) },
+    },
+    reset,
+  }
+}
