@@ -39,11 +39,11 @@ export default function Pagination({
   const btnActive = `${btnBase} bg-zinc-700 text-white`
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-6 pt-4 border-t border-zinc-800">
+    <div className="flex flex-col items-center gap-3 mt-6 pt-4 border-t border-zinc-800 sm:flex-row sm:justify-between">
       <div className="text-xs text-zinc-500">
         {start}–{end} of {totalItems}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap justify-center items-center gap-1">
         <button onClick={() => onPageChange(1)} disabled={page === 1} className={btn}>« First</button>
         <button onClick={() => onPageChange(page - 1)} disabled={page === 1} className={btn}>‹ Prev</button>
         {pages.map((p, i) =>

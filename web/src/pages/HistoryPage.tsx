@@ -26,6 +26,8 @@ function parseEventData(data: string): { message?: string; path?: string; [k: st
   try { return JSON.parse(data) } catch { return {} }
 }
 
+const BLOCKLISTABLE = new Set(['grabbed', 'downloadFailed', 'importFailed'])
+
 export default function HistoryPage() {
   const [events, setEvents] = useState<HistoryEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -64,7 +66,7 @@ export default function HistoryPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h2 className="text-2xl font-bold">History</h2>
         <select
           value={typeFilter}
@@ -85,64 +87,112 @@ export default function HistoryPage() {
           <p>No history events found</p>
         </div>
       ) : (
-        <div className="border border-zinc-800 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-zinc-900 border-b border-zinc-800">
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Event Type</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Source Title</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Date</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800">
-              {pageItems.map(event => {
-                const parsed = parseEventData(event.data)
-                const detail = parsed.message || parsed.path || ''
-                const isError = event.eventType === 'downloadFailed' || event.eventType === 'importFailed'
-                return (
-                  <tr key={event.id} className="bg-zinc-900/50 hover:bg-zinc-800/50 transition-colors">
-                    <td className="px-4 py-3 align-top">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${EVENT_TYPE_COLORS[event.eventType] ?? 'bg-zinc-700 text-zinc-400'}`}>
-                        {event.eventType}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-zinc-200 max-w-md">
-                      <div className="truncate" title={event.sourceTitle}>
-                        {event.sourceTitle || <span className="text-zinc-600">—</span>}
-                      </div>
-                      {detail && (
-                        <div className={`mt-1 text-xs break-words ${isError ? 'text-red-400' : 'text-zinc-500'}`}>
-                          {detail}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-400 whitespace-nowrap align-top">
-                      {formatDate(event.createdAt)}
-                    </td>
-                    <td className="px-4 py-3 text-right align-top whitespace-nowrap">
-                      {(event.eventType === 'downloadFailed' || event.eventType === 'importFailed' || event.eventType === 'grabbed') && (
-                        <button
-                          onClick={() => handleBlocklist(event.id)}
-                          className="text-xs text-amber-400 hover:text-amber-300 transition-colors mr-3"
-                          title="Add to blocklist — prevents this release from being grabbed again"
-                        >
-                          Blocklist
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleDelete(event.id)}
-                        className="text-xs text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </td>
+        <>
+          {/* Desktop table */}
+          <div className="hidden sm:block border border-zinc-800 rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-zinc-900 border-b border-zinc-800">
+                    <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Event Type</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Source Title</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">Date</th>
+                    <th className="px-4 py-3" />
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {pageItems.map(event => {
+                    const parsed = parseEventData(event.data)
+                    const detail = parsed.message || parsed.path || ''
+                    const isError = event.eventType === 'downloadFailed' || event.eventType === 'importFailed'
+                    return (
+                      <tr key={event.id} className="bg-zinc-900/50 hover:bg-zinc-800/50 transition-colors">
+                        <td className="px-4 py-3 align-top">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${EVENT_TYPE_COLORS[event.eventType] ?? 'bg-zinc-700 text-zinc-400'}`}>
+                            {event.eventType}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-zinc-200 max-w-md">
+                          <div className="truncate" title={event.sourceTitle}>
+                            {event.sourceTitle || <span className="text-zinc-600">—</span>}
+                          </div>
+                          {detail && (
+                            <div className={`mt-1 text-xs break-words ${isError ? 'text-red-400' : 'text-zinc-500'}`}>
+                              {detail}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-zinc-400 whitespace-nowrap align-top text-xs">
+                          {formatDate(event.createdAt)}
+                        </td>
+                        <td className="px-4 py-3 text-right align-top whitespace-nowrap">
+                          {BLOCKLISTABLE.has(event.eventType) && (
+                            <button
+                              onClick={() => handleBlocklist(event.id)}
+                              className="text-xs text-amber-400 hover:text-amber-300 transition-colors mr-3"
+                              title="Add to blocklist — prevents this release from being grabbed again"
+                            >
+                              Blocklist
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDelete(event.id)}
+                            className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="sm:hidden space-y-2">
+            {pageItems.map(event => {
+              const parsed = parseEventData(event.data)
+              const detail = parsed.message || parsed.path || ''
+              const isError = event.eventType === 'downloadFailed' || event.eventType === 'importFailed'
+              return (
+                <div key={event.id} className="border border-zinc-800 rounded-lg bg-zinc-900/50 p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${EVENT_TYPE_COLORS[event.eventType] ?? 'bg-zinc-700 text-zinc-400'}`}>
+                      {event.eventType}
+                    </span>
+                    <span className="text-[10px] text-zinc-500">{formatDate(event.createdAt)}</span>
+                  </div>
+                  <p className="text-sm text-zinc-200 break-words mb-1">
+                    {event.sourceTitle || <span className="text-zinc-600">—</span>}
+                  </p>
+                  {detail && (
+                    <p className={`text-xs break-words mb-2 ${isError ? 'text-red-400' : 'text-zinc-500'}`}>
+                      {detail}
+                    </p>
+                  )}
+                  <div className="flex gap-3 mt-2">
+                    {BLOCKLISTABLE.has(event.eventType) && (
+                      <button
+                        onClick={() => handleBlocklist(event.id)}
+                        className="text-xs text-amber-400 hover:text-amber-300 transition-colors py-1"
+                      >
+                        Blocklist
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDelete(event.id)}
+                      className="text-xs text-red-400 hover:text-red-300 transition-colors py-1"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
       <Pagination {...paginationProps} />
     </div>

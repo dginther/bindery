@@ -88,16 +88,16 @@ export default function WantedPage() {
               </div>
 
               {showResults === book.id && results.length > 0 && (
-                <div className="ml-4 mt-1 mb-3 space-y-1">
+                <div className="mt-1 mb-3 space-y-1">
                   {results.slice(0, 10).map(r => (
                     <div key={r.guid} className="flex items-center justify-between p-2 bg-zinc-800/50 rounded text-xs">
                       <div className="min-w-0 mr-3">
                         <span className="truncate block">{r.title}</span>
-                        <span className="text-zinc-500">{r.indexerName} &middot; {formatSize(r.size)} &middot; {r.grabs} grabs</span>
+                        <span className="text-zinc-500 truncate block">{r.indexerName} &middot; {formatSize(r.size)} &middot; {r.grabs} grabs</span>
                       </div>
                       <button
                         onClick={() => grab(r, book.id)}
-                        className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 rounded text-[10px] font-medium flex-shrink-0"
+                        className="px-2 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-[10px] font-medium flex-shrink-0 touch-manipulation"
                       >
                         Grab
                       </button>

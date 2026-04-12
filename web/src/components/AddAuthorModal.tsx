@@ -44,13 +44,13 @@ export default function AddAuthorModal({ onClose, onAdded }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-start justify-center pt-24 z-50" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-lg mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-zinc-800">
           <h3 className="text-lg font-semibold">Add Author</h3>
         </div>
 
-        <div className="p-4">
+        <div className="p-4 flex-1 overflow-y-auto">
           <div className="flex gap-2">
             <input
               type="text"

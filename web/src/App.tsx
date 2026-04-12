@@ -11,8 +11,21 @@ import SeriesPage from './pages/SeriesPage'
 import CalendarPage from './pages/CalendarPage'
 import BlocklistPage from './pages/BlocklistPage'
 
+const NAV_ITEMS = [
+  { to: '/', label: 'Authors', end: true },
+  { to: '/books', label: 'Books' },
+  { to: '/wanted', label: 'Wanted' },
+  { to: '/queue', label: 'Queue' },
+  { to: '/history', label: 'History' },
+  { to: '/series', label: 'Series' },
+  { to: '/calendar', label: 'Calendar' },
+  { to: '/blocklist', label: 'Blocklist' },
+  { to: '/settings', label: 'Settings' },
+]
+
 function App() {
   const [version, setVersion] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
     api.status().then(s => setVersion(s.version)).catch(() => {})
@@ -23,38 +36,83 @@ function App() {
       isActive ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
     }`
 
+  const mobileLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `block px-4 py-3 text-sm font-medium transition-colors border-b border-zinc-800/50 ${
+      isActive ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+    }`
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-zinc-950 text-zinc-100">
-        <header className="border-b border-zinc-800">
+        <header className="border-b border-zinc-800 sticky top-0 z-40 bg-zinc-950">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-20">
-              <div className="flex items-center gap-6 overflow-x-auto">
-                <Link to="/" className="flex items-center gap-2 flex-shrink-0 group">
-                  <img
-                    src="/favicon.png"
-                    alt="Bindery"
-                    className="w-14 h-14 rounded-full transition-transform group-hover:scale-105"
-                  />
-                  <h1 className="text-lg font-bold tracking-tight">Bindery</h1>
-                </Link>
-                <nav className="flex gap-1 flex-shrink-0">
-                  <NavLink to="/" end className={linkClass}>Authors</NavLink>
-                  <NavLink to="/books" className={linkClass}>Books</NavLink>
-                  <NavLink to="/wanted" className={linkClass}>Wanted</NavLink>
-                  <NavLink to="/queue" className={linkClass}>Queue</NavLink>
-                  <NavLink to="/history" className={linkClass}>History</NavLink>
-                  <NavLink to="/series" className={linkClass}>Series</NavLink>
-                  <NavLink to="/calendar" className={linkClass}>Calendar</NavLink>
-                  <NavLink to="/blocklist" className={linkClass}>Blocklist</NavLink>
-                  <NavLink to="/settings" className={linkClass}>Settings</NavLink>
-                </nav>
+            <div className="flex items-center justify-between h-16">
+              {/* Logo */}
+              <Link to="/" className="flex items-center gap-2 flex-shrink-0 group" onClick={() => setMenuOpen(false)}>
+                <img
+                  src="/favicon.png"
+                  alt="Bindery"
+                  className="w-14 h-14 rounded-full transition-transform group-hover:scale-105"
+                />
+                <h1 className="text-lg font-bold tracking-tight">Bindery</h1>
+              </Link>
+
+              {/* Desktop nav */}
+              <nav className="hidden md:flex gap-1 overflow-x-auto">
+                {NAV_ITEMS.map(item => (
+                  <NavLink key={item.to} to={item.to} end={item.end} className={linkClass}>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+
+              <div className="flex items-center gap-3">
+                {version && (
+                  <span className="hidden md:block text-xs text-zinc-600">v{version}</span>
+                )}
+                {/* Hamburger */}
+                <button
+                  onClick={() => setMenuOpen(open => !open)}
+                  className="md:hidden p-2 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+                  aria-label="Toggle menu"
+                >
+                  {menuOpen ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  )}
+                </button>
               </div>
-              {version && (
-                <span className="text-xs text-zinc-600 flex-shrink-0 ml-4">v{version}</span>
-              )}
             </div>
           </div>
+
+          {/* Mobile dropdown nav */}
+          {menuOpen && (
+            <div className="md:hidden border-t border-zinc-800">
+              <nav>
+                {NAV_ITEMS.map(item => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={mobileLinkClass}
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+              {version && (
+                <div className="px-4 py-2 text-xs text-zinc-600 border-t border-zinc-800">
+                  v{version}
+                </div>
+              )}
+            </div>
+          )}
         </header>
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">

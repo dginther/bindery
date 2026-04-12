@@ -15,6 +15,7 @@ const MONTH_NAMES = [
 ]
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const DAY_NAMES_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
 export default function CalendarPage() {
   const [books, setBooks] = useState<Book[]>([])
@@ -62,45 +63,51 @@ export default function CalendarPage() {
   const cells: Array<number | null> = []
   for (let i = 0; i < firstDay; i++) cells.push(null)
   for (let i = 1; i <= daysInMonth; i++) cells.push(i)
-  // Pad to full weeks
   while (cells.length % 7 !== 0) cells.push(null)
+
+  const hasReleases = Object.keys(booksByDay).length > 0
+
+  const CalendarHeader = () => (
+    <div className="flex items-center justify-between mb-6">
+      <h2 className="text-2xl font-bold">Calendar</h2>
+      <div className="flex items-center gap-2">
+        {!isCurrentMonth && (
+          <button
+            onClick={goToToday}
+            className="px-3 py-1.5 text-xs text-zinc-400 hover:text-white border border-zinc-700 rounded transition-colors"
+          >
+            Today
+          </button>
+        )}
+        <button
+          onClick={prevMonth}
+          className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded transition-colors"
+        >
+          ‹
+        </button>
+        <span className="text-sm font-medium w-36 text-center">
+          {MONTH_NAMES[viewMonth]} {viewYear}
+        </span>
+        <button
+          onClick={nextMonth}
+          className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded transition-colors"
+        >
+          ›
+        </button>
+      </div>
+    </div>
+  )
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">Calendar</h2>
-        <div className="flex items-center gap-2">
-          {!isCurrentMonth && (
-            <button
-              onClick={goToToday}
-              className="px-3 py-1.5 text-xs text-zinc-400 hover:text-white border border-zinc-700 rounded transition-colors"
-            >
-              Today
-            </button>
-          )}
-          <button
-            onClick={prevMonth}
-            className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded transition-colors"
-          >
-            ‹
-          </button>
-          <span className="text-sm font-medium w-36 text-center">
-            {MONTH_NAMES[viewMonth]} {viewYear}
-          </span>
-          <button
-            onClick={nextMonth}
-            className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded transition-colors"
-          >
-            ›
-          </button>
-        </div>
-      </div>
+      <CalendarHeader />
 
       {loading ? (
         <div className="text-zinc-500">Loading...</div>
       ) : (
         <>
-          <div className="border border-zinc-800 rounded-lg overflow-hidden">
+          {/* Grid calendar — hidden on mobile, shown sm+ */}
+          <div className="hidden sm:block border border-zinc-800 rounded-lg overflow-hidden">
             {/* Day headers */}
             <div className="grid grid-cols-7 bg-zinc-900 border-b border-zinc-800">
               {DAY_NAMES.map(d => (
@@ -118,16 +125,14 @@ export default function CalendarPage() {
                 return (
                   <div
                     key={idx}
-                    className={`min-h-[100px] p-2 border-b border-r border-zinc-800 last:border-r-0 ${
+                    className={`min-h-[100px] p-2 border-b border-r border-zinc-800 ${
                       day ? 'bg-zinc-900/50' : 'bg-zinc-900/20'
                     } ${idx % 7 === 6 ? 'border-r-0' : ''}`}
                   >
                     {day && (
                       <>
                         <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${
-                          isToday
-                            ? 'bg-emerald-600 text-white'
-                            : 'text-zinc-400'
+                          isToday ? 'bg-emerald-600 text-white' : 'text-zinc-400'
                         }`}>
                           {day}
                         </div>
@@ -150,30 +155,76 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          {/* Legend / summary */}
-          {Object.keys(booksByDay).length > 0 && (
-            <div className="mt-4 p-3 bg-zinc-900 border border-zinc-800 rounded-lg">
-              <p className="text-xs text-zinc-400 font-medium mb-2">
-                Books releasing in {MONTH_NAMES[viewMonth]} {viewYear}:
-              </p>
-              <div className="space-y-1">
+          {/* Compact grid for mobile — shown below sm */}
+          <div className="sm:hidden border border-zinc-800 rounded-lg overflow-hidden mb-4">
+            <div className="grid grid-cols-7 bg-zinc-900 border-b border-zinc-800">
+              {DAY_NAMES_SHORT.map((d, i) => (
+                <div key={i} className="py-2 text-center text-xs font-medium text-zinc-500">
+                  {d}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7">
+              {cells.map((day, idx) => {
+                const isToday = isCurrentMonth && day === today.getDate()
+                const hasBooks = day ? (booksByDay[day]?.length ?? 0) > 0 : false
+                return (
+                  <div
+                    key={idx}
+                    className={`aspect-square flex flex-col items-center justify-center border-b border-r border-zinc-800 text-xs ${
+                      idx % 7 === 6 ? 'border-r-0' : ''
+                    } ${day ? 'bg-zinc-900/50' : 'bg-zinc-900/20'}`}
+                  >
+                    {day && (
+                      <>
+                        <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs ${
+                          isToday ? 'bg-emerald-600 text-white' : 'text-zinc-400'
+                        }`}>
+                          {day}
+                        </span>
+                        {hasBooks && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-0.5" />
+                        )}
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Agenda list — always visible, primary view on mobile */}
+          {hasReleases ? (
+            <div className="mt-4 border border-zinc-800 rounded-lg overflow-hidden">
+              <div className="px-4 py-2 bg-zinc-900 border-b border-zinc-800">
+                <p className="text-xs text-zinc-400 font-medium">
+                  Releasing in {MONTH_NAMES[viewMonth]} {viewYear}
+                </p>
+              </div>
+              <div className="divide-y divide-zinc-800">
                 {Object.entries(booksByDay)
                   .sort(([a], [b]) => Number(a) - Number(b))
-                  .map(([day, dayBooks]) => (
-                    <div key={day} className="flex items-start gap-2 text-xs">
-                      <span className="text-zinc-500 w-14 flex-shrink-0">
-                        {MONTH_NAMES[viewMonth].slice(0, 3)} {day}
-                      </span>
-                      <span className="text-zinc-300">
-                        {dayBooks.map(b => b.title).join(', ')}
-                      </span>
-                    </div>
-                  ))}
+                  .flatMap(([day, dayBooks]) =>
+                    dayBooks.map(book => (
+                      <div key={book.id} className="flex items-center gap-3 px-4 py-3">
+                        <span className="text-xs text-zinc-500 w-12 flex-shrink-0">
+                          {MONTH_NAMES[viewMonth].slice(0, 3)} {day}
+                        </span>
+                        {book.imageUrl && (
+                          <img src={book.imageUrl} alt="" className="w-8 h-10 object-cover rounded flex-shrink-0" />
+                        )}
+                        <span className="text-sm text-zinc-200 min-w-0 truncate">{book.title}</span>
+                        {book.author && (
+                          <span className="text-xs text-zinc-500 flex-shrink-0 hidden sm:block">
+                            {book.author.authorName}
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  )}
               </div>
             </div>
-          )}
-
-          {Object.keys(booksByDay).length === 0 && (
+          ) : (
             <p className="mt-4 text-center text-sm text-zinc-600">
               No monitored books releasing this month
             </p>
