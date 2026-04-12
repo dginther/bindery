@@ -76,6 +76,32 @@ jobs:
           git diff --staged --quiet || git commit -m "chore(deploy): update bindery image to sha-${GITHUB_SHA} [skip ci]"
           git push
 
+  # Lint + security — runs in parallel with build, non-blocking
+  lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.1.6
+          args: --timeout=5m
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm run lint --prefix web
+      - run: npm run typecheck --prefix web
+
   # PR validation only — no Docker build
   validate:
     runs-on: ubuntu-latest
