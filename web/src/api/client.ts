@@ -75,6 +75,7 @@ export const api = {
     return request<HistoryEvent[]>(`/history${qs ? '?' + qs : ''}`)
   },
   deleteHistory: (id: number) => request<void>(`/history/${id}`, { method: 'DELETE' }),
+  blocklistFromHistory: (id: number) => request<BlocklistEntry>(`/history/${id}/blocklist`, { method: 'POST' }),
 
   // Blocklist
   listBlocklist: () => request<BlocklistEntry[]>('/blocklist'),

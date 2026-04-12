@@ -111,7 +111,7 @@ func main() {
 	dlClientHandler := api.NewDownloadClientHandler(dlClientRepo)
 	queueHandler := api.NewQueueHandler(downloadRepo, dlClientRepo, bookRepo, historyRepo)
 	fileHandler := api.NewFileHandler(bookRepo)
-	historyHandler := api.NewHistoryHandler(historyRepo)
+	historyHandler := api.NewHistoryHandler(historyRepo, blocklistRepo)
 	blocklistHandler := api.NewBlocklistHandler(blocklistRepo)
 	notificationHandler := api.NewNotificationHandler(notificationRepo, notif)
 	qualityProfileHandler := api.NewQualityProfileHandler(qualityProfileRepo)
@@ -193,6 +193,7 @@ func main() {
 		// History
 		r.Get("/history", historyHandler.List)
 		r.Delete("/history/{id}", historyHandler.Delete)
+		r.Post("/history/{id}/blocklist", historyHandler.Blocklist)
 
 		// Blocklist
 		r.Get("/blocklist", blocklistHandler.List)

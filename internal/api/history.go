@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -10,11 +11,12 @@ import (
 )
 
 type HistoryHandler struct {
-	history *db.HistoryRepo
+	history   *db.HistoryRepo
+	blocklist *db.BlocklistRepo
 }
 
-func NewHistoryHandler(history *db.HistoryRepo) *HistoryHandler {
-	return &HistoryHandler{history: history}
+func NewHistoryHandler(history *db.HistoryRepo, blocklist *db.BlocklistRepo) *HistoryHandler {
+	return &HistoryHandler{history: history, blocklist: blocklist}
 }
 
 func (h *HistoryHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -55,4 +57,41 @@ func (h *HistoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Blocklist adds a history event's release to the blocklist so it won't be grabbed again.
+func (h *HistoryHandler) Blocklist(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+
+	event, err := h.history.GetByID(r.Context(), id)
+	if err != nil || event == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "history event not found"})
+		return
+	}
+
+	// Extract guid from the stored event data
+	var data map[string]interface{}
+	_ = json.Unmarshal([]byte(event.Data), &data)
+	guid, _ := data["guid"].(string)
+
+	// Fall back to sourceTitle as a unique key if no guid stored
+	if guid == "" {
+		guid = event.SourceTitle
+	}
+
+	entry := &models.BlocklistEntry{
+		BookID: event.BookID,
+		GUID:   guid,
+		Title:  event.SourceTitle,
+		Reason: event.EventType,
+	}
+	if err := h.blocklist.Create(r.Context(), entry); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, entry)
 }

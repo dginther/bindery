@@ -71,7 +71,7 @@ func (s *Scanner) CheckDownloads(ctx context.Context) {
 			if dl.Status != models.DownloadStatusFailed {
 				slog.Warn("download failed", "title", dl.Title, "message", slot.FailMessage)
 				s.downloads.SetError(ctx, dl.ID, slot.FailMessage)
-				eventData, _ := json.Marshal(map[string]string{"message": slot.FailMessage})
+				eventData, _ := json.Marshal(map[string]string{"guid": dl.GUID, "message": slot.FailMessage})
 				s.history.Create(ctx, &models.HistoryEvent{
 					BookID:      dl.BookID,
 					EventType:   models.HistoryEventDownloadFailed,

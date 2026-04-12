@@ -124,7 +124,7 @@ func (h *QueueHandler) Grab(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("failed to send to sabnzbd", "error", err, "title", req.Title)
 		h.downloads.SetError(r.Context(), dl.ID, err.Error())
-		h.recordHistory(r.Context(), models.HistoryEventDownloadFailed, req.Title, req.BookID, map[string]string{"message": err.Error()})
+		h.recordHistory(r.Context(), models.HistoryEventDownloadFailed, req.Title, req.BookID, map[string]interface{}{"guid": req.GUID, "message": err.Error()})
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to send to SABnzbd: " + err.Error()})
 		return
 	}
@@ -139,6 +139,7 @@ func (h *QueueHandler) Grab(w http.ResponseWriter, r *http.Request) {
 	dl.Status = models.DownloadStatusDownloading
 
 	h.recordHistory(r.Context(), models.HistoryEventGrabbed, req.Title, req.BookID, map[string]interface{}{
+		"guid":      req.GUID,
 		"size":      req.Size,
 		"indexerId": req.IndexerID,
 	})

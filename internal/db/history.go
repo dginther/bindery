@@ -44,6 +44,17 @@ func (r *HistoryRepo) ListByType(ctx context.Context, eventType string) ([]model
 	return r.query(ctx, "SELECT * FROM history WHERE event_type=? ORDER BY created_at DESC", eventType)
 }
 
+func (r *HistoryRepo) GetByID(ctx context.Context, id int64) (*models.HistoryEvent, error) {
+	events, err := r.query(ctx, "SELECT * FROM history WHERE id=?", id)
+	if err != nil {
+		return nil, err
+	}
+	if len(events) == 0 {
+		return nil, nil
+	}
+	return &events[0], nil
+}
+
 func (r *HistoryRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM history WHERE id=?", id)
 	return err

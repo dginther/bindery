@@ -51,6 +51,11 @@ export default function HistoryPage() {
     setEvents(prev => prev.filter(e => e.id !== id))
   }
 
+  const handleBlocklist = async (id: number) => {
+    await api.blocklistFromHistory(id).catch(console.error)
+    setEvents(prev => prev.filter(e => e.id !== id))
+  }
+
   const eventTypes = Array.from(new Set(events.map(e => e.eventType))).sort()
 
   const { pageItems, paginationProps, reset } = usePagination(events, 100)
@@ -115,7 +120,16 @@ export default function HistoryPage() {
                     <td className="px-4 py-3 text-zinc-400 whitespace-nowrap align-top">
                       {formatDate(event.createdAt)}
                     </td>
-                    <td className="px-4 py-3 text-right align-top">
+                    <td className="px-4 py-3 text-right align-top whitespace-nowrap">
+                      {(event.eventType === 'downloadFailed' || event.eventType === 'importFailed' || event.eventType === 'grabbed') && (
+                        <button
+                          onClick={() => handleBlocklist(event.id)}
+                          className="text-xs text-amber-400 hover:text-amber-300 transition-colors mr-3"
+                          title="Add to blocklist — prevents this release from being grabbed again"
+                        >
+                          Blocklist
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDelete(event.id)}
                         className="text-xs text-red-400 hover:text-red-300 transition-colors"
