@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 permissions:
@@ -15,7 +16,7 @@ jobs:
   # Eliminates inter-job wait times and redundant checkouts
   build:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
@@ -63,12 +64,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Deploy: update Helm chart image tag
+      # Deploy: update Helm chart image tag (only on main branch pushes)
       - name: Update Helm image tag
+        if: github.ref == 'refs/heads/main'
         run: |
           IMAGE_TAG="sha-${GITHUB_SHA}"
           sed -i "s|tag:.*|tag: \"${IMAGE_TAG}\"|" charts/bindery/values.yaml
       - name: Commit and push
+        if: github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
