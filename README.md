@@ -45,12 +45,13 @@
 - **SABnzbd + qBittorrent** — Full support for both Usenet and torrent download clients
 - **Auto-grab** — Scheduler searches for wanted books every 12h and automatically grabs the best result
 - **Interactive search** — Manual per-book search from the Wanted page with full result details
+- **Smart matching** — Four-tier query fallback (`t=book` → `surname+title` → `author+title` → title); word-boundary keyword matching; contiguous-phrase requirement for multi-word titles; dual-author-anchor for ambiguous short titles; subtitle-aware (`Title: Subtitle`)
+- **Composite ranking** — Results scored by format quality, edition tags (RETAIL / UNABRIDGED / ABRIDGED), year match to the book's release year, grab count, size, and ISBN exact-match bonus
 - **Quality profiles** — Preference order for EPUB / MOBI / AZW3 / PDF, with cutoff rules
-- **Language filter** — Preferred language setting (English by default); filters releases with foreign-language tags from results
-- **Quality-aware ranking** — Results sorted by detected format quality, then by grabs/size
+- **Language filter** — Preferred language setting (English by default); filters releases with foreign-language tags at word boundaries
 - **Custom formats** — Regex-based release scoring for freeleech, retail tags, etc.
 - **Delay profiles** — Wait N hours before grabbing to let higher-quality releases appear
-- **Blocklist** — Prevent re-grabbing releases that failed; add entries directly from History with one click
+- **Blocklist** — Consulted on every search and auto-grab; prevents re-grabbing releases you've rejected. Add entries directly from History with one click
 - **Failure visibility** — Download errors surfaced in Queue (active) and History (permanent)
 
 ### Import & organize
