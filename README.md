@@ -19,6 +19,12 @@
 
 ---
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vavallee/bindery/main/.github/assets/screenshot.png" alt="Bindery Authors page" width="800" />
+</p>
+
+---
+
 ## Why Bindery?
 
 **Readarr is dead.** The official project was archived in June 2025 and its metadata backend (`api.bookinfo.club`) is permanently offline. Community forks rely on fragile Goodreads scrapers that break regularly. There was no reliable, open-source tool for automated book management on Usenet.
