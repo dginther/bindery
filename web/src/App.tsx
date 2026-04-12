@@ -28,13 +28,13 @@ function App() {
       <div className="min-h-screen bg-zinc-950 text-zinc-100">
         <header className="border-b border-zinc-800">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-14">
+            <div className="flex items-center justify-between h-20">
               <div className="flex items-center gap-6 overflow-x-auto">
                 <Link to="/" className="flex items-center gap-2 flex-shrink-0 group">
                   <img
                     src="/favicon.png"
                     alt="Bindery"
-                    className="w-8 h-8 rounded-full transition-transform group-hover:scale-105"
+                    className="w-14 h-14 rounded-full transition-transform group-hover:scale-105"
                   />
                   <h1 className="text-lg font-bold tracking-tight">Bindery</h1>
                 </Link>
