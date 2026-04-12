@@ -113,41 +113,53 @@ func (s *Searcher) SearchQuery(ctx context.Context, indexers []models.Indexer, q
 	return results
 }
 
-// filterRelevant removes results that don't contain any significant word
-// from the title or author name in the result title.
-func filterRelevant(results []newznab.SearchResult, title, author string) []newznab.SearchResult {
-	// Build keyword set from title and author (words >= 3 chars)
-	var keywords []string
-	for _, word := range strings.Fields(strings.ToLower(title)) {
-		if len(word) >= 3 {
-			keywords = append(keywords, word)
-		}
-	}
-	for _, word := range strings.Fields(strings.ToLower(author)) {
-		if len(word) >= 3 {
-			keywords = append(keywords, word)
-		}
-	}
+// stopWords are common English words excluded from keyword significance checks.
+var stopWords = map[string]bool{
+	"the": true, "a": true, "an": true, "and": true, "or": true,
+	"of": true, "in": true, "to": true, "by": true, "for": true,
+	"with": true, "at": true, "from": true, "is": true, "it": true,
+	"as": true, "on": true, "be": true,
+}
 
-	if len(keywords) == 0 {
+// sigWords returns the meaningful (non-stop, 3+ char) words from s.
+func sigWords(s string) []string {
+	var out []string
+	for _, w := range strings.Fields(strings.ToLower(s)) {
+		if len(w) >= 3 && !stopWords[w] {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// filterRelevant removes results that don't match the significant words of the title.
+// All significant title words must appear in the result. If the title has no
+// significant words (e.g. all stop words), author keywords are used instead.
+func filterRelevant(results []newznab.SearchResult, title, author string) []newznab.SearchResult {
+	titleKws := sigWords(title)
+	authorKws := sigWords(author)
+
+	// Decide what must match: prefer title keywords; fall back to author keywords
+	required := titleKws
+	if len(required) == 0 {
+		required = authorKws
+	}
+	if len(required) == 0 {
 		return results
 	}
 
 	var filtered []newznab.SearchResult
 	for _, r := range results {
 		lower := strings.ToLower(r.Title)
-		matches := 0
-		for _, kw := range keywords {
-			if strings.Contains(lower, kw) {
-				matches++
+		// Every required keyword must appear in the result title
+		ok := true
+		for _, kw := range required {
+			if !strings.Contains(lower, kw) {
+				ok = false
+				break
 			}
 		}
-		// Require at least 2 keyword matches, or 1 if there's only 1 keyword
-		minMatches := 2
-		if len(keywords) <= 2 {
-			minMatches = 1
-		}
-		if matches >= minMatches {
+		if ok {
 			filtered = append(filtered, r)
 		}
 	}
