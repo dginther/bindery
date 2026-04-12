@@ -5,13 +5,12 @@
 <h1 align="center">Bindery</h1>
 
 <p align="center">
-  <strong>Automated book download manager for Usenet</strong><br>
+  <strong>Automated book download manager for Usenet & Torrents</strong><br>
   Monitor authors. Search indexers. Download. Organize. Done.
 </p>
 
 <p align="center">
   <a href="https://github.com/vavallee/bindery/actions/workflows/ci.yml"><img src="https://github.com/vavallee/bindery/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://codecov.io/gh/vavallee/bindery"><img src="https://codecov.io/gh/vavallee/bindery/branch/main/graph/badge.svg" alt="Coverage" /></a>
   <a href="https://github.com/vavallee/bindery/releases"><img src="https://img.shields.io/github/v/release/vavallee/bindery" alt="Release" /></a>
   <a href="https://github.com/vavallee/bindery/pkgs/container/bindery"><img src="https://img.shields.io/badge/ghcr.io-vavallee%2Fbindery-blue" alt="Docker" /></a>
   <a href="https://goreportcard.com/report/github.com/vavallee/bindery"><img src="https://goreportcard.com/badge/github.com/vavallee/bindery" alt="Go Report Card" /></a>
@@ -28,19 +27,57 @@
 
 ## Features
 
-- **Monitor authors** — Add your favorite authors and Bindery automatically tracks all their books
-- **Search Usenet indexers** — Query multiple Newznab-compatible indexers (NZBGeek, NZBFinder, NZBPlanet, and more) simultaneously
-- **Automated downloads** — Send NZBs to SABnzbd with one click, or let Bindery grab them automatically
-- **Smart import** — Completed downloads are matched, renamed, and organized into your library
-- **Multiple metadata sources** — OpenLibrary (primary), Google Books, Hardcover.app, and BookBrainz provide rich, reliable book data
-- **Modern web UI** — Clean, responsive interface built with React and shadcn/ui
-- **Single binary** — One executable with the frontend embedded. No nginx, no sidecars, no complexity
-- **Multi-arch Docker images** — `linux/amd64` and `linux/arm64` images published to GHCR on every release
-- **Kubernetes-ready** — Helm chart included for easy deployment with ArgoCD or Flux
-- **Quality profiles** — Define format preferences (ebook, audiobook, PDF) and let Bindery find the best match
-- **Series tracking** — Automatically detects and displays series information with reading order
-- **Calendar view** — See upcoming book releases from your monitored authors
-- **REST API** — Full API for integration with other tools and automation
+### Library management
+- **Author monitoring** — Add authors and Bindery tracks all their works automatically via OpenLibrary's author works endpoint
+- **Book tracking** — Per-book monitor toggle, status workflow (wanted → downloading → downloaded → imported)
+- **Series support** — Books grouped by series with position tracking and dedicated Series page
+- **Edition tracking** — Multiple editions per work, with format, ISBN, publisher, page count
+- **Library scan** — Walk `/books/` and reconcile existing files with wanted books in the database
+
+### Search & downloads
+- **Newznab + Torznab** — Query multiple Usenet and torrent indexers in parallel, deduplicated and ranked
+- **SABnzbd + qBittorrent** — Full support for both Usenet and torrent download clients
+- **Auto-grab** — Scheduler searches for wanted books every 12h and automatically grabs the best result
+- **Interactive search** — Manual per-book search from the Wanted page with full result details
+- **Quality profiles** — Preference order for EPUB / MOBI / AZW3 / PDF, with cutoff rules
+- **Quality-aware ranking** — Results sorted by detected format quality, then by grabs/size
+- **Custom formats** — Regex-based release scoring for freeleech, retail tags, etc.
+- **Delay profiles** — Wait N hours before grabbing to let higher-quality releases appear
+- **Blocklist** — Prevent re-grabbing releases that failed
+- **Failure visibility** — Download errors surfaced in Queue (active) and History (permanent)
+
+### Import & organize
+- **Automatic import** — Completed downloads matched by NZO ID, moved to library with configurable naming template
+- **Naming tokens** — `{Author}`, `{SortAuthor}`, `{Title}`, `{Year}`, `{ext}` with sanitized path components
+- **Cross-filesystem moves** — Atomic rename when possible, copy+verify+delete for NFS/separate volumes
+- **History** — Every grab, import, and failure recorded with full detail (shown inline on History page)
+
+### Metadata
+- **OpenLibrary** (primary) — Authors, books, editions, covers, ISBN lookup
+- **Google Books** (enricher) — Richer descriptions and ratings
+- **Hardcover.app** (enricher) — Community ratings and series data via GraphQL
+- No Goodreads scraping. All sources use documented, stable public APIs.
+
+### Operations
+- **Webhook notifications** — Configurable HTTP callbacks for grab / import / failure events (pipe to Apprise, ntfy, Home Assistant, etc.)
+- **Metadata profiles** — Filter books by language, popularity, page count, ISBN presence
+- **Import lists** — Auto-add authors/books from external sources; exclusion list to skip unwanted entries
+- **Tag system** — Scope indexers/profiles/notifications to specific authors
+- **Backup/restore** — Snapshot the SQLite database on demand
+- **API key auth** — Optional `X-Api-Key` header enforcement for external integrations
+
+### UI
+- **Modern React SPA** — Clean, dark-mode interface built with React 19 + TypeScript + Tailwind
+- **Pagination everywhere** — First/Prev/Next/Last + page numbers + configurable page size on all list pages
+- **Search, filter, sort** — On Authors, Books, Wanted, and History pages
+- **Calendar view** — Upcoming book releases from monitored authors
+- **Full REST API** — Every feature accessible via HTTP for scripting and integration
+
+### Packaging
+- **Single binary** — Frontend embedded via `go:embed`. No nginx, no sidecars, no complexity
+- **Distroless Docker image** — Minimal attack surface, published to GHCR
+- **Kubernetes-ready** — Helm chart included for ArgoCD / Flux deployments
+- **SQLite + WAL** — Pure Go driver (`modernc.org/sqlite`), no CGO, no external database to manage
 
 ## Quick Start
 
@@ -87,32 +124,38 @@ See [`charts/bindery/values.yaml`](charts/bindery/values.yaml) for all configura
 
 ### Binary
 
-Download the latest binary from [Releases](https://github.com/vavallee/bindery/releases) and run:
+Download the latest release from [Releases](https://github.com/vavallee/bindery/releases) and run:
 
 ```bash
-./bindery --config /path/to/config
+./bindery
 ```
+
+Open <http://localhost:8787> to access the web UI.
 
 ## Configuration
 
-Bindery is configured through the web UI at `http://localhost:8787` after first launch. Key settings:
+Bindery is configured through the web UI. Key screens under **Settings**:
 
-| Setting | Description |
-|---------|-------------|
-| **Indexers** | Add your Newznab indexer URLs and API keys |
-| **Download Client** | Configure SABnzbd connection (host, port, API key, category) |
-| **Root Folders** | Set where your book library lives |
-| **Quality Profiles** | Define format preferences (EPUB > MOBI > PDF, etc.) |
-| **Metadata** | Optionally add a Google Books API key or Hardcover token for richer data |
+| Tab | Description |
+|-----|-------------|
+| **Indexers** | Add your Newznab / Torznab URLs and API keys |
+| **Download Clients** | Configure SABnzbd and/or qBittorrent |
+| **Notifications** | Webhooks for grab/import/failure events |
+| **Quality** | View quality profiles (EPUB / MOBI / AZW3 / PDF ordering) |
+| **Metadata** | Optional Google Books API key and metadata profile filters |
+| **General** | Naming template, API key, backup/restore |
 
-Environment variables are available for container deployments:
+### Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BINDERY_PORT` | `8787` | HTTP server port |
 | `BINDERY_DB_PATH` | `/config/bindery.db` | SQLite database path |
-| `BINDERY_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
-| `BINDERY_API_KEY` | _(empty)_ | API key for external access (optional) |
+| `BINDERY_DATA_DIR` | `/config` | Config directory (backups live here) |
+| `BINDERY_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
+| `BINDERY_API_KEY` | _(empty)_ | Enforces `X-Api-Key` header on all `/api/v1/*` routes |
+| `BINDERY_DOWNLOAD_DIR` | `/downloads` | Where SABnzbd places completed downloads |
+| `BINDERY_LIBRARY_DIR` | `/books` | Destination for imported books |
 
 ## Metadata Sources
 
@@ -122,112 +165,131 @@ Bindery aggregates book metadata from multiple open sources:
 |--------|---------------|----------|
 | [OpenLibrary](https://openlibrary.org) | None | Primary: authors, books, editions, covers, ISBN lookup |
 | [Google Books](https://developers.google.com/books) | API key (free) | Enrichment: descriptions, ratings |
-| [Hardcover.app](https://hardcover.app) | User token | Optional: community ratings, series data |
-| [BookBrainz](https://bookbrainz.org) | None | Fallback: edition and publisher data |
+| [Hardcover.app](https://hardcover.app) | None (public GraphQL) | Enrichment: community ratings, series |
 
 No Goodreads scraping. All sources use documented, stable public APIs.
 
 ## Supported Integrations
 
-### Download Clients
-- **SABnzbd** (full support)
-- More clients planned (NZBGet, etc.)
+### Download clients
+- **SABnzbd** — full support (NZB submission, queue/history polling, pause/resume/delete)
+- **qBittorrent** — WebUI API v2 with cookie-based auth (add magnet/URL, list/delete torrents)
 
 ### Indexers
-- Any **Newznab-compatible** indexer (NZBGeek, NZBFinder, NZBPlanet, DrunkenSlug, etc.)
+- **Newznab** (Usenet) — NZBGeek, NZBFinder, NZBPlanet, DrunkenSlug, etc.
+- **Torznab** (Torrents) — Prowlarr, Jackett, or direct Torznab endpoints
 
-## Screenshots
-
-> Screenshots will be added once the UI is complete.
+### Notifications
+- **Generic webhooks** — Any HTTP endpoint. Pipe to Apprise, ntfy, Home Assistant, Slack, Discord via proxies.
 
 ## Architecture
 
 Bindery is a single Go binary with the React frontend embedded via `go:embed`:
 
 ```
-                                    Newznab Indexers
-                                    (NZBGeek, etc.)
-                                         |
-                                         v
-OpenLibrary ──> ┌───────────────────────���─────┐
-Google Books ──>│         Bindery             │──> SABnzbd
-Hardcover    ──>│  Go backend + React SPA     │
-BookBrainz   ──>│  SQLite (WAL mode)          │──> /books/ library
-                └─────────────────────────────┘
-                         |
-                    :8787 (HTTP)
+   Newznab / Torznab
+      indexers
+         │
+         ▼
+┌────────────────────────────┐
+│         Bindery            │──► SABnzbd / qBittorrent
+│  Go backend + React SPA    │──► /books/ library
+│  SQLite (WAL mode)         │──► Webhook notifications
+└────────────────────────────┘
+    ▲                    ▲
+    │                    │
+OpenLibrary          Google Books, Hardcover.app
+ (primary)                (enrichers)
 ```
 
-- **Backend:** Go 1.26 with [chi](https://github.com/go-chi/chi) router
+- **Backend:** Go 1.25 with [chi](https://github.com/go-chi/chi) router
 - **Database:** SQLite via [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) (pure Go, no CGO)
-- **Frontend:** React 19 + TypeScript + [Vite](https://vite.dev) + [shadcn/ui](https://ui.shadcn.com)
+- **Frontend:** React 19 + TypeScript + Tailwind CSS + [Vite](https://vite.dev)
 - **Container:** Multi-stage build on [distroless](https://github.com/GoogleContainerTools/distroless) (minimal attack surface)
+
+## API
+
+Bindery exposes a full REST API under `/api/v1`. A few highlights:
+
+```
+GET    /api/v1/health              - server health
+GET    /api/v1/author              - list authors
+POST   /api/v1/author              - add author (triggers async book fetch)
+GET    /api/v1/book?status=wanted  - filter books by status
+POST   /api/v1/book/{id}/search    - manual indexer search for a book
+GET    /api/v1/queue               - active downloads with live SABnzbd overlay
+POST   /api/v1/queue/grab          - submit a search result to download client
+GET    /api/v1/history             - grab/import/failure events
+GET    /api/v1/blocklist           - blocked releases
+POST   /api/v1/notification/{id}/test - fire a test webhook
+POST   /api/v1/backup              - snapshot the database
+```
+
+Set `BINDERY_API_KEY` and pass it via `X-Api-Key` header for external access.
 
 ## Development
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.25+
 - Node.js 22+
-- Make
 
 ### Build
 
 ```bash
-# Build everything
-make build
+# Backend only
+go build ./cmd/bindery
 
-# Run in development mode (hot reload)
-make dev
+# Frontend
+cd web && npm ci && npm run build
 
-# Run tests
-make test
+# Go tests
+go test ./...
 
-# Run linters
-make lint
+# Frontend typecheck + lint
+cd web && npm run typecheck && npm run lint
 
-# Build Docker image
-make docker-build
+# Docker image
+docker build -t bindery:dev .
 ```
 
-### Project Structure
+### Project structure
 
 ```
 bindery/
-├── cmd/bindery/          # Application entry point
+├── cmd/bindery/           # Application entry point
 ├── internal/
-│   ├── api/              # HTTP handlers (chi router)
-│   ├── db/               # SQLite repository layer + migrations
-│   ├── models/           # Domain types
-│   ├── metadata/         # Book metadata providers
-│   ├── indexer/          # Newznab indexer client
-│   ├── downloader/       # SABnzbd client
-│   ├── importer/         # Download import pipeline
-│   ├── scheduler/        # Background job runner
-│   └── config/           # Application configuration
-├── web/                  # React frontend (Vite)
-├── charts/bindery/       # Helm chart
-└── .github/workflows/    # CI/CD
+│   ├── api/               # HTTP handlers (chi router)
+│   ├── db/                # SQLite repository layer + migrations
+│   ├── models/            # Domain types
+│   ├── metadata/          # OpenLibrary, Google Books, Hardcover
+│   ├── indexer/           # Newznab/Torznab client + multi-indexer searcher
+│   ├── downloader/        # SABnzbd + qBittorrent clients
+│   ├── importer/          # Filename parser, renamer, scanner
+│   ├── notifier/          # Webhook dispatcher
+│   ├── scheduler/         # Background job runner (cron)
+│   ├── webui/             # go:embed for React dist
+│   └── config/            # Environment-based configuration
+├── web/                   # React frontend (Vite)
+├── charts/bindery/        # Helm chart
+└── .github/workflows/     # CI/CD
 ```
 
 ## Contributing
 
-Contributions are welcome! Please:
+Contributions welcome. Please:
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-Please ensure tests pass (`make test`) and linters are clean (`make lint`) before submitting.
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/x`)
+3. Ensure `go test ./...` passes and `cd web && npm run build` succeeds
+4. Open a Pull Request
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
 - The [*arr community](https://wiki.servarr.com/) for pioneering the monitor-search-download-import pattern
-- [OpenLibrary](https://openlibrary.org) for providing free, open book metadata
+- [OpenLibrary](https://openlibrary.org) for free, open book metadata
 - The Readarr project for the original vision, even though the implementation couldn't be sustained
