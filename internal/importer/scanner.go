@@ -148,6 +148,59 @@ func (s *Scanner) tryImport(ctx context.Context, dl *models.Download, downloadPa
 	}
 }
 
+// titleMatch returns true when bookTitle and parsedTitle share enough significant words
+// to be considered the same work. It requires at least 2 overlapping words of 3+ chars,
+// or all words if the parsed title has fewer than 2 such words. Both titles must
+// contribute at least one word to avoid single-character false positives.
+func titleMatch(bookTitle, parsedTitle string) bool {
+	if parsedTitle == "" {
+		return false
+	}
+	sigWords := func(s string) []string {
+		var out []string
+		for _, w := range strings.Fields(strings.ToLower(s)) {
+			// Strip non-alpha chars (punctuation, hyphens)
+			w = strings.Map(func(r rune) rune {
+				if r >= 'a' && r <= 'z' {
+					return r
+				}
+				return -1
+			}, w)
+			if len(w) >= 3 {
+				out = append(out, w)
+			}
+		}
+		return out
+	}
+
+	btWords := sigWords(bookTitle)
+	ptWords := sigWords(parsedTitle)
+
+	if len(btWords) == 0 || len(ptWords) == 0 {
+		return false
+	}
+
+	// Build lookup set for book title words
+	btSet := make(map[string]bool, len(btWords))
+	for _, w := range btWords {
+		btSet[w] = true
+	}
+
+	overlap := 0
+	for _, w := range ptWords {
+		if btSet[w] {
+			overlap++
+		}
+	}
+
+	// Require at least 2 matching words, or all words if parsed title has < 2
+	minOverlap := 2
+	if len(ptWords) < 2 {
+		minOverlap = len(ptWords)
+	}
+	return overlap >= minOverlap
+}
+
 // ScanLibrary walks the library directory for book files not yet tracked in the database
 // and reconciles found files with existing "wanted" book records.
 func (s *Scanner) ScanLibrary(ctx context.Context) {
@@ -198,13 +251,11 @@ func (s *Scanner) ScanLibrary(ctx context.Context) {
 		// Parse the filename to extract title/author hints
 		parsed := ParseFilename(path)
 
-		// Search existing books for a title match (case-insensitive substring)
+		// Search existing books for a title match using word overlap
 		matched := false
 		if parsed.Title != "" {
-			lowerTitle := strings.ToLower(parsed.Title)
 			for _, b := range allBooks {
-				if b.Status == models.BookStatusWanted &&
-					strings.Contains(strings.ToLower(b.Title), lowerTitle) {
+				if b.Status == models.BookStatusWanted && titleMatch(b.Title, parsed.Title) {
 					// Match found — update file path and status
 					if err := s.books.SetFilePath(ctx, b.ID, path); err != nil {
 						slog.Error("library scan: failed to update book", "id", b.ID, "error", err)

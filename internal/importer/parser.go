@@ -23,9 +23,11 @@ var (
 	isbn10Re = regexp.MustCompile(`\b\d{9}[\dXx]\b`)
 	// Year pattern
 	yearRe = regexp.MustCompile(`\b(19|20)\d{2}\b`)
-	// Common separator patterns: "Title - Author", "Title by Author"
-	titleAuthorRe = regexp.MustCompile(`(?i)^(.+?)\s*[-–]\s*(.+?)$`)
+	// Common separator patterns: "Title - Author" (spaces required around dash), "Title by Author"
+	titleAuthorRe = regexp.MustCompile(`(?i)^(.+?)\s+[-–]\s+(.+?)$`)
 	byAuthorRe    = regexp.MustCompile(`(?i)^(.+?)\s+by\s+(.+?)$`)
+	// Dot/underscore word-separator pattern (common in release filenames)
+	dotSepRe = regexp.MustCompile(`[._]+`)
 	// Clean up patterns
 	cleanRe = regexp.MustCompile(`[\[\(].*?[\]\)]`) // remove [brackets] and (parens)
 	multiSp = regexp.MustCompile(`\s{2,}`)
@@ -63,6 +65,9 @@ func ParseFilename(path string) ParsedFile {
 	if y := yearRe.FindString(name); y != "" {
 		p.Year = y
 	}
+
+	// Replace dots and underscores with spaces (common release filename separators)
+	name = dotSepRe.ReplaceAllString(name, " ")
 
 	// Clean brackets/parens content
 	cleaned := cleanRe.ReplaceAllString(name, "")
