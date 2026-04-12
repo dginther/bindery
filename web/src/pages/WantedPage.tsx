@@ -114,6 +114,12 @@ export default function WantedPage() {
                 </button>
               </div>
 
+              {showResults === book.id && results.length === 0 && (
+                <div className="mt-1 mb-3 px-3 py-2 bg-zinc-800/50 rounded text-xs text-zinc-500">
+                  No results found on any indexer.
+                </div>
+              )}
+
               {showResults === book.id && results.length > 0 && (
                 <div className="mt-1 mb-3 space-y-1">
                   {results.slice(0, 10).map(r => (
