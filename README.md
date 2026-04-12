@@ -46,6 +46,7 @@
 - **Auto-grab** — Scheduler searches for wanted books every 12h and automatically grabs the best result
 - **Interactive search** — Manual per-book search from the Wanted page with full result details
 - **Quality profiles** — Preference order for EPUB / MOBI / AZW3 / PDF, with cutoff rules
+- **Language filter** — Preferred language setting (English by default); filters releases with foreign-language tags from results
 - **Quality-aware ranking** — Results sorted by detected format quality, then by grabs/size
 - **Custom formats** — Regex-based release scoring for freeleech, retail tags, etc.
 - **Delay profiles** — Wait N hours before grabbing to let higher-quality releases appear
@@ -150,7 +151,7 @@ Bindery is configured through the web UI. Key screens under **Settings**:
 | **Notifications** | Webhooks for grab/import/failure events |
 | **Quality** | View quality profiles (EPUB / MOBI / AZW3 / PDF ordering) |
 | **Metadata** | Optional Google Books API key and metadata profile filters |
-| **General** | Naming template, API key, backup/restore |
+| **General** | Preferred language filter, naming template, API key, backup/restore |
 
 ### Environment variables
 
