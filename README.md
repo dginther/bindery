@@ -330,6 +330,10 @@ Tracked feature requests for future releases. Not a commitment — priorities sh
 - **Multi-user support** — Per-user libraries, per-user monitored authors, per-user quality profiles. Today Bindery assumes a single user; the database schema and UI would need user scoping.
 - **OAuth / SSO** — Swap the current `X-Api-Key` model for OIDC (Authelia, Authentik, Keycloak, Google, GitHub). Support header-based auth for reverse-proxy setups that handle SSO upstream.
 - **External database support (MySQL / Postgres)** — Optional settings for DB host, credentials, and connection path so bindery can run against a shared MySQL/Postgres instance instead of the bundled SQLite file. Useful for multi-replica HA deployments.
+- **Calibre library integration** — Treat a Calibre library as a first-class storage target, for users who already live in Calibre or want e-reader sync:
+  - _Library import & sync_ — On startup, read an existing Calibre library (`metadata.opf` + `Author/Title (id)/…` folder layout) and ingest it as Bindery's catalogue. Detect out-of-band Calibre edits and re-sync.
+  - _Write-through to `metadata.db`_ — On every import, insert/update the row in Calibre's SQLite `metadata.db` so new books appear in Calibre immediately (no "Add books" scan). Preserve Calibre's exact folder naming (`Author Name/Book Title (id)/book.ext`) and sidecar files (`metadata.opf`, `cover.jpg`).
+  - _OPDS feed_ — Expose a Calibre-content-server-style OPDS endpoint so KOReader / Moon+ Reader / etc. can browse and download without running Calibre itself.
 
 ## Changelog
 
