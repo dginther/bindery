@@ -2,7 +2,9 @@ import { BrowserRouter, Routes, Route, NavLink, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { api } from './api/client'
 import AuthorsPage from './pages/AuthorsPage'
+import AuthorDetailPage from './pages/AuthorDetailPage'
 import BooksPage from './pages/BooksPage'
+import BookDetailPage from './pages/BookDetailPage'
 import WantedPage from './pages/WantedPage'
 import QueuePage from './pages/QueuePage'
 import SettingsPage from './pages/SettingsPage'
@@ -120,7 +122,9 @@ function App() {
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <Routes>
             <Route path="/" element={<AuthorsPage />} />
+            <Route path="/author/:id" element={<AuthorDetailPage />} />
             <Route path="/books" element={<BooksPage />} />
+            <Route path="/book/:id" element={<BookDetailPage />} />
             <Route path="/wanted" element={<WantedPage />} />
             <Route path="/queue" element={<QueuePage />} />
             <Route path="/history" element={<HistoryPage />} />

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import BookActionsModal from '../components/BookActionsModal'
+import { Link } from 'react-router-dom'
+import ViewToggle from '../components/ViewToggle'
+import { useView } from '../components/useView'
 import { api, Book } from '../api/client'
 import Pagination from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
@@ -29,7 +31,7 @@ export default function BooksPage() {
   const [mediaFilter, setMediaFilter] = useState<'' | 'ebook' | 'audiobook'>('')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortMode>('title-az')
-  const [actionBook, setActionBook] = useState<Book | null>(null)
+  const [view, setView] = useView('books', 'grid')
 
   useEffect(() => {
     api.listBooks().then(setBooks).catch(console.error).finally(() => setLoading(false))
@@ -75,7 +77,10 @@ export default function BooksPage() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Books</h2>
-        <span className="text-sm text-slate-600 dark:text-zinc-500">{filtered.length} of {books.length}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-slate-600 dark:text-zinc-500">{filtered.length} of {books.length}</span>
+          <ViewToggle view={view} onChange={setView} />
+        </div>
       </div>
 
       {/* Controls */}
@@ -120,12 +125,59 @@ export default function BooksPage() {
           <p>{books.length === 0 ? 'No books found' : 'No books match your filters'}</p>
         </div>
       ) : (
+        view === 'table' ? (
+        <div className="border border-slate-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800">
+                  <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase">Title</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase">Author</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase">Year</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase">Type</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
+                {pageItems.map(book => (
+                  <tr
+                    key={book.id}
+                    className="bg-slate-100/50 dark:bg-zinc-900/50 hover:bg-slate-200/50 dark:hover:bg-zinc-800/50 cursor-pointer"
+                    onClick={() => (window.location.href = `/book/${book.id}`)}
+                  >
+                    <td className="px-3 py-2">
+                      <Link to={`/book/${book.id}`} className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                        {book.imageUrl ? (
+                          <img src={book.imageUrl} alt="" className="w-6 h-9 object-cover rounded flex-shrink-0" />
+                        ) : (
+                          <div className="w-6 h-9 bg-slate-200 dark:bg-zinc-800 rounded flex-shrink-0" />
+                        )}
+                        <span className="text-slate-800 dark:text-zinc-200 truncate">{book.title}</span>
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-zinc-400 whitespace-nowrap">{book.author?.authorName || '—'}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-zinc-400 whitespace-nowrap">{book.releaseDate ? new Date(book.releaseDate).getFullYear() : '—'}</td>
+                    <td className="px-3 py-2 text-xs whitespace-nowrap">
+                      {book.mediaType === 'audiobook' ? '🎧 Audiobook' : '📖 Ebook'}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${statusColors[book.status] || 'bg-slate-300 dark:bg-zinc-700 text-slate-600 dark:text-zinc-400'}`}>
+                        {statusLabel[book.status] ?? book.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {pageItems.map(book => (
-            <button
+            <Link
               key={book.id}
-              onClick={() => setActionBook(book)}
-              className="border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-100 dark:bg-zinc-900 overflow-hidden group text-left hover:border-emerald-500 transition-colors"
+              to={`/book/${book.id}`}
+              className="border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-100 dark:bg-zinc-900 overflow-hidden group text-left hover:border-emerald-500 transition-colors block"
             >
               <div className="aspect-[2/3] bg-slate-200 dark:bg-zinc-800 relative">
                 {book.imageUrl ? (
@@ -160,22 +212,12 @@ export default function BooksPage() {
                   )}
                 </div>
               </div>
-            </button>
+            </Link>
           ))}
         </div>
+        )
       )}
       <Pagination {...paginationProps} />
-
-      {actionBook && (
-        <BookActionsModal
-          book={actionBook}
-          onClose={() => setActionBook(null)}
-          onUpdated={(u) => {
-            setBooks(bs => bs.map(b => b.id === u.id ? u : b))
-            setActionBook(u)
-          }}
-        />
-      )}
     </div>
   )
 }
