@@ -16,6 +16,16 @@ spec:
     helm:
       valueFiles:
         - values.yaml
+      # Homelab overrides: enable the Traefik IngressRoute on
+      # bindery.autonomy.ninja; the chart defaults ship with ingress
+      # disabled so generic consumers don't get an undeliverable route.
+      values: |
+        ingress:
+          enabled: true
+          host: bindery.autonomy.ninja
+          entryPoints:
+            - internal-https
+          certResolver: internal
   destination:
     server: https://kubernetes.default.svc
     namespace: default
