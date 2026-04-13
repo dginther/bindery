@@ -21,6 +21,10 @@ type Book struct {
 	SelectedEditionID     *int64     `json:"selectedEditionId"`
 	FilePath              string     `json:"filePath"`
 	Language              string     `json:"language"`
+	MediaType             string     `json:"mediaType"`
+	Narrator              string     `json:"narrator"`
+	DurationSeconds       int        `json:"durationSeconds"`
+	ASIN                  string     `json:"asin"`
 	MetadataProvider      string     `json:"metadataProvider"`
 	LastMetadataRefreshAt *time.Time `json:"lastMetadataRefreshAt"`
 	CreatedAt             time.Time  `json:"createdAt"`
@@ -37,4 +41,12 @@ const (
 	BookStatusDownloaded  = "downloaded"
 	BookStatusImported    = "imported"
 	BookStatusSkipped     = "skipped"
+)
+
+// MediaType distinguishes ebook from audiobook editions so the search,
+// grab, and import pipelines can apply the right categories, formats,
+// and destination directories.
+const (
+	MediaTypeEbook     = "ebook"
+	MediaTypeAudiobook = "audiobook"
 )

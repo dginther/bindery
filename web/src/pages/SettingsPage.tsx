@@ -475,7 +475,7 @@ function GeneralTab() {
               <input
                 value={settings['naming.bookTemplate'] ?? ''}
                 onChange={e => setSettings(s => ({ ...s, 'naming.bookTemplate': e.target.value }))}
-                placeholder="{Author Name}/{Book Title}"
+                placeholder="{Author}/{Title} ({Year})/{Title} - {Author}.{ext}"
                 className="flex-1 bg-slate-200 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-slate-400 dark:focus:border-zinc-600"
               />
               <button
@@ -484,6 +484,25 @@ function GeneralTab() {
                 className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-xs font-medium disabled:opacity-50"
               >
                 {saving === 'naming.bookTemplate' ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-slate-600 dark:text-zinc-400 mb-1">Audiobook Folder Template</label>
+            <p className="text-xs text-slate-600 dark:text-zinc-500 mb-2">Audiobooks are imported as whole directories (multi-part m4b/mp3 + cover stay together). Template produces the destination folder; original filenames inside are preserved.</p>
+            <div className="flex gap-2">
+              <input
+                value={settings['naming_template_audiobook'] ?? ''}
+                onChange={e => setSettings(s => ({ ...s, 'naming_template_audiobook': e.target.value }))}
+                placeholder="{Author}/{Title} ({Year})"
+                className="flex-1 bg-slate-200 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-slate-400 dark:focus:border-zinc-600"
+              />
+              <button
+                onClick={() => saveSetting('naming_template_audiobook')}
+                disabled={saving === 'naming_template_audiobook'}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-xs font-medium disabled:opacity-50"
+              >
+                {saving === 'naming_template_audiobook' ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>

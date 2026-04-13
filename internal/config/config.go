@@ -6,25 +6,29 @@ import "os"
 
 // Config holds the application configuration loaded from environment variables.
 type Config struct {
-	Port        string
-	DBPath      string
-	DataDir     string
-	LogLevel    string
-	APIKey      string
-	DownloadDir string
-	LibraryDir  string
+	Port         string
+	DBPath       string
+	DataDir      string
+	LogLevel     string
+	APIKey       string
+	DownloadDir  string
+	LibraryDir   string
+	AudiobookDir string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
+// BINDERY_AUDIOBOOK_DIR falls back to BINDERY_LIBRARY_DIR when unset so
+// ebook-only installs continue to work unchanged.
 func Load() *Config {
 	return &Config{
-		Port:        envOr("BINDERY_PORT", "8787"),
-		DBPath:      envOr("BINDERY_DB_PATH", "/config/bindery.db"),
-		DataDir:     envOr("BINDERY_DATA_DIR", "/config"),
-		LogLevel:    envOr("BINDERY_LOG_LEVEL", "info"),
-		APIKey:      envOr("BINDERY_API_KEY", ""),
-		DownloadDir: envOr("BINDERY_DOWNLOAD_DIR", "/downloads"),
-		LibraryDir:  envOr("BINDERY_LIBRARY_DIR", "/books"),
+		Port:         envOr("BINDERY_PORT", "8787"),
+		DBPath:       envOr("BINDERY_DB_PATH", "/config/bindery.db"),
+		DataDir:      envOr("BINDERY_DATA_DIR", "/config"),
+		LogLevel:     envOr("BINDERY_LOG_LEVEL", "info"),
+		APIKey:       envOr("BINDERY_API_KEY", ""),
+		DownloadDir:  envOr("BINDERY_DOWNLOAD_DIR", "/downloads"),
+		LibraryDir:   envOr("BINDERY_LIBRARY_DIR", "/books"),
+		AudiobookDir: envOr("BINDERY_AUDIOBOOK_DIR", ""),
 	}
 }
 

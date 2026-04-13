@@ -2,21 +2,57 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/vavallee/bindery/internal/db"
+	"github.com/vavallee/bindery/internal/metadata"
 	"github.com/vavallee/bindery/internal/models"
 )
 
 type BookHandler struct {
 	books *db.BookRepo
+	meta  *metadata.Aggregator
 }
 
-func NewBookHandler(books *db.BookRepo) *BookHandler {
-	return &BookHandler{books: books}
+func NewBookHandler(books *db.BookRepo, meta *metadata.Aggregator) *BookHandler {
+	return &BookHandler{books: books, meta: meta}
+}
+
+// EnrichAudiobook fetches audnex data for the book's ASIN and updates
+// narrator, duration, cover, and description on the record. Requires the
+// book to be media_type=audiobook with an ASIN already set.
+func (h *BookHandler) EnrichAudiobook(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	book, err := h.books.GetByID(r.Context(), id)
+	if err != nil || book == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "book not found"})
+		return
+	}
+	if book.MediaType != models.MediaTypeAudiobook {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "book is not an audiobook"})
+		return
+	}
+	if book.ASIN == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "set ASIN before enriching"})
+		return
+	}
+	if err := h.meta.EnrichAudiobook(r.Context(), book); err != nil {
+		slog.Warn("audnex enrich failed", "bookId", book.ID, "error", err)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := h.books.Update(r.Context(), book); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, book)
 }
 
 func (h *BookHandler) List(w http.ResponseWriter, r *http.Request) {

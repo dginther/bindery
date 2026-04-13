@@ -37,6 +37,15 @@ export default function WantedPage() {
     }
   }
 
+  const changeMediaType = async (book: Book, mediaType: 'ebook' | 'audiobook') => {
+    try {
+      const updated = await api.updateBook(book.id, { mediaType })
+      setBooks(books.map(b => b.id === book.id ? updated : b))
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update')
+    }
+  }
+
   const grab = async (result: SearchResult, bookId: number) => {
     try {
       await api.grab({
@@ -100,7 +109,18 @@ export default function WantedPage() {
                     <img src={book.imageUrl} alt="" className="w-10 h-14 object-cover rounded flex-shrink-0" />
                   )}
                   <div className="min-w-0">
-                    <h3 className="font-medium text-sm truncate">{book.title}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-medium text-sm truncate">{book.title}</h3>
+                      <select
+                        value={book.mediaType || 'ebook'}
+                        onChange={e => changeMediaType(book, e.target.value as 'ebook' | 'audiobook')}
+                        className="bg-slate-200 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded text-[11px] px-1.5 py-0.5 focus:outline-none"
+                        title="Change media type"
+                      >
+                        <option value="ebook">📖 Ebook</option>
+                        <option value="audiobook">🎧 Audiobook</option>
+                      </select>
+                    </div>
                     {book.releaseDate && (
                       <p className="text-xs text-slate-600 dark:text-zinc-500">{new Date(book.releaseDate).getFullYear()}</p>
                     )}

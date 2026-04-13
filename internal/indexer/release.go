@@ -17,6 +17,7 @@ type ParsedRelease struct {
 	Abridged     bool
 	ReleaseGroup string
 	ISBN         string
+	ASIN         string // Audible ASIN when embedded in the release title
 }
 
 var (
@@ -26,6 +27,7 @@ var (
 
 	releaseYearRe  = regexp.MustCompile(`\b(19|20)\d{2}\b`)
 	releaseIsbnRe  = regexp.MustCompile(`\b97[89][\-\s]?\d[\-\s]?\d{3}[\-\s]?\d{5}[\-\s]?\d\b|\b97[89]\d{10}\b`)
+	releaseAsinRe  = regexp.MustCompile(`\bB[0-9A-Z]{9}\b`)
 	releaseGroupRe = regexp.MustCompile(`-([A-Za-z0-9]+)\s*$`)
 
 	formatTokens = []string{"epub", "azw3", "azw", "mobi", "pdf", "djvu", "cbr", "cbz", "fb2", "lit", "rtf", "txt", "m4b", "m4a", "flac", "mp3", "ogg"}
@@ -98,6 +100,11 @@ func ParseRelease(title string) ParsedRelease {
 	// ISBN: normalize to digits-only
 	if isbn := releaseIsbnRe.FindString(title); isbn != "" {
 		p.ISBN = strings.NewReplacer("-", "", " ", "").Replace(isbn)
+	}
+
+	// ASIN (Audible identifier). Uppercase BXXXXXXXXX pattern, 10 chars.
+	if asin := releaseAsinRe.FindString(title); asin != "" {
+		p.ASIN = asin
 	}
 
 	// Format: first recognised format token in the normalized title

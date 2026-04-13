@@ -25,12 +25,43 @@ func NewSearcher() *Searcher {
 
 // MatchCriteria describes what we're searching for. Year and ISBN are
 // optional and only used for ranking — they never cause a result to be
-// rejected.
+// rejected. MediaType filters the indexer category set; "audiobook" narrows
+// to the Newznab audio tree (3000-range, primarily 3030), anything else
+// narrows to the books tree (7000-range).
 type MatchCriteria struct {
-	Title  string
-	Author string
-	Year   int
-	ISBN   string
+	Title     string
+	Author    string
+	Year      int
+	ISBN      string
+	ASIN      string // for audiobook ASIN anchoring
+	MediaType string // models.MediaTypeEbook or models.MediaTypeAudiobook
+}
+
+// filterCategoriesForMedia returns a subset of the indexer's configured
+// categories relevant to the requested media type. If the configured set
+// already contains none of the relevant prefixes, it's returned unchanged
+// (user knows what they're doing, or it's an all-caps generic indexer).
+func filterCategoriesForMedia(cats []int, mediaType string) []int {
+	if len(cats) == 0 {
+		return cats
+	}
+	var wantPrefix int
+	switch mediaType {
+	case "audiobook":
+		wantPrefix = 3 // audio
+	default:
+		wantPrefix = 7 // books
+	}
+	var out []int
+	for _, c := range cats {
+		if c/1000 == wantPrefix {
+			out = append(out, c)
+		}
+	}
+	if len(out) == 0 {
+		return cats
+	}
+	return out
 }
 
 // SearchBook queries all enabled indexers and returns deduplicated, filtered,
@@ -51,7 +82,8 @@ func (s *Searcher) SearchBook(ctx context.Context, indexers []models.Indexer, c 
 			defer wg.Done()
 
 			client := newznab.New(idx.URL, idx.APIKey)
-			hits, err := client.BookSearch(ctx, c.Title, c.Author, idx.Categories)
+			cats := filterCategoriesForMedia(idx.Categories, c.MediaType)
+			hits, err := client.BookSearch(ctx, c.Title, c.Author, cats)
 			if err != nil {
 				slog.Warn("indexer search failed", "indexer", idx.Name, "error", err)
 				return
@@ -295,6 +327,19 @@ func scoreResult(r newznab.SearchResult, c MatchCriteria) float64 {
 	}
 	score := float64(models.QualityRank[quality]) * 100
 
+	// Media-type mismatch penalty. An ebook grab returning an audiobook
+	// format (or vice-versa) is almost certainly the wrong kind of release
+	// — knock it way down so correct-type results with weaker quality still
+	// win. Neutral (unknown) formats aren't penalised either way.
+	if c.MediaType != "" && quality != "unknown" {
+		if c.MediaType == models.MediaTypeAudiobook && !isAudiobookFormat(quality) {
+			score -= 500
+		}
+		if c.MediaType == models.MediaTypeEbook && isAudiobookFormat(quality) {
+			score -= 500
+		}
+	}
+
 	switch {
 	case p.Retail:
 		score += 50
@@ -336,8 +381,22 @@ func scoreResult(r newznab.SearchResult, c MatchCriteria) float64 {
 	if c.ISBN != "" && p.ISBN != "" && strings.EqualFold(p.ISBN, c.ISBN) {
 		score += 200
 	}
+	// ASIN match is a near-certain identifier for audiobooks.
+	if c.ASIN != "" && strings.Contains(strings.ToUpper(r.Title), strings.ToUpper(c.ASIN)) {
+		score += 250
+	}
 
 	return score
+}
+
+// isAudiobookFormat returns true if the format token is one of the
+// recognised audio container types.
+func isAudiobookFormat(format string) bool {
+	switch format {
+	case "m4b", "m4a", "mp3", "flac", "ogg":
+		return true
+	}
+	return false
 }
 
 // detectQuality scans a result title for known quality keywords and returns

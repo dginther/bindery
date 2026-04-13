@@ -206,3 +206,62 @@ func TestFilterByLanguageAny(t *testing.T) {
 		t.Errorf("lang=any should pass all %d results, got %d", 2, len(got))
 	}
 }
+
+func TestFilterCategoriesForMedia(t *testing.T) {
+	all := []int{7000, 7020, 3030}
+	ebook := filterCategoriesForMedia(all, "ebook")
+	if len(ebook) != 2 || ebook[0] != 7000 || ebook[1] != 7020 {
+		t.Errorf("ebook filter = %v, want [7000 7020]", ebook)
+	}
+	audio := filterCategoriesForMedia(all, "audiobook")
+	if len(audio) != 1 || audio[0] != 3030 {
+		t.Errorf("audiobook filter = %v, want [3030]", audio)
+	}
+	// Empty input passes through.
+	if got := filterCategoriesForMedia(nil, "ebook"); got != nil {
+		t.Errorf("nil input should pass through, got %v", got)
+	}
+	// Unknown type falls back to books.
+	if got := filterCategoriesForMedia(all, ""); len(got) != 2 {
+		t.Errorf("empty type should default to books, got %v", got)
+	}
+	// If no categories match the requested prefix, return the original
+	// list so the user's configuration still gets sent.
+	booksOnly := []int{7000, 7020}
+	if got := filterCategoriesForMedia(booksOnly, "audiobook"); len(got) != 2 {
+		t.Errorf("no-match should return original list, got %v", got)
+	}
+}
+
+func TestScoreResultMediaTypePenalty(t *testing.T) {
+	audiobookResult := newznab.SearchResult{Title: "Dune.Herbert.m4b", GUID: "a"}
+	ebookResult := newznab.SearchResult{Title: "Dune.Herbert.epub", GUID: "e"}
+	// Asking for an audiobook: m4b should beat epub even though epub has
+	// higher raw quality rank (5) than m4b (9 in our scale).
+	crit := MatchCriteria{Title: "Dune", Author: "Frank Herbert", MediaType: "audiobook"}
+	aScore := scoreResult(audiobookResult, crit)
+	eScore := scoreResult(ebookResult, crit)
+	if aScore <= eScore {
+		t.Errorf("audiobook score %.1f should exceed ebook score %.1f when MediaType=audiobook", aScore, eScore)
+	}
+	// And vice versa.
+	crit.MediaType = "ebook"
+	aScore = scoreResult(audiobookResult, crit)
+	eScore = scoreResult(ebookResult, crit)
+	if eScore <= aScore {
+		t.Errorf("ebook score %.1f should exceed audiobook score %.1f when MediaType=ebook", eScore, aScore)
+	}
+}
+
+func TestIsAudiobookFormat(t *testing.T) {
+	for _, f := range []string{"m4b", "m4a", "mp3", "flac", "ogg"} {
+		if !isAudiobookFormat(f) {
+			t.Errorf("%q should be an audiobook format", f)
+		}
+	}
+	for _, f := range []string{"epub", "mobi", "azw3", "pdf", ""} {
+		if isAudiobookFormat(f) {
+			t.Errorf("%q should NOT be an audiobook format", f)
+		}
+	}
+}

@@ -20,8 +20,8 @@ func NewBookRepo(db *sql.DB) *BookRepo {
 
 const bookColumns = `id, foreign_id, author_id, title, sort_title, original_title, description,
 	image_url, release_date, genres, average_rating, ratings_count, monitored, status,
-	any_edition_ok, selected_edition_id, file_path, language, metadata_provider, last_metadata_refresh_at,
-	created_at, updated_at`
+	any_edition_ok, selected_edition_id, file_path, language, media_type, narrator, duration_seconds, asin,
+	metadata_provider, last_metadata_refresh_at, created_at, updated_at`
 
 func (r *BookRepo) List(ctx context.Context) ([]models.Book, error) {
 	return r.query(ctx, "SELECT "+bookColumns+" FROM books ORDER BY sort_title", nil)
@@ -61,16 +61,23 @@ func (r *BookRepo) Create(ctx context.Context, b *models.Book) error {
 	now := time.Now().UTC()
 	genresJSON, _ := json.Marshal(b.Genres)
 
+	mediaType := b.MediaType
+	if mediaType == "" {
+		mediaType = models.MediaTypeEbook
+	}
+
 	result, err := r.db.ExecContext(ctx, `
 		INSERT INTO books (foreign_id, author_id, title, sort_title, original_title, description,
 		                   image_url, release_date, genres, average_rating, ratings_count,
 		                   monitored, status, any_edition_ok, selected_edition_id,
-		                   language, metadata_provider, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                   language, media_type, narrator, duration_seconds, asin,
+		                   metadata_provider, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		b.ForeignID, b.AuthorID, b.Title, b.SortTitle, b.OriginalTitle, b.Description,
 		b.ImageURL, b.ReleaseDate, string(genresJSON), b.AverageRating, b.RatingsCount,
 		b.Monitored, b.Status, b.AnyEditionOK, b.SelectedEditionID,
-		b.Language, b.MetadataProvider, now, now)
+		b.Language, mediaType, b.Narrator, b.DurationSeconds, b.ASIN,
+		b.MetadataProvider, now, now)
 	if err != nil {
 		return fmt.Errorf("create book: %w", err)
 	}
@@ -89,16 +96,23 @@ func (r *BookRepo) Update(ctx context.Context, b *models.Book) error {
 	now := time.Now().UTC()
 	genresJSON, _ := json.Marshal(b.Genres)
 
+	mediaType := b.MediaType
+	if mediaType == "" {
+		mediaType = models.MediaTypeEbook
+	}
+
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE books SET title=?, sort_title=?, original_title=?, description=?, image_url=?,
 		                 release_date=?, genres=?, average_rating=?, ratings_count=?,
 		                 monitored=?, status=?, any_edition_ok=?, selected_edition_id=?,
-		                 file_path=?, language=?, metadata_provider=?, last_metadata_refresh_at=?, updated_at=?
+		                 file_path=?, language=?, media_type=?, narrator=?, duration_seconds=?, asin=?,
+		                 metadata_provider=?, last_metadata_refresh_at=?, updated_at=?
 		WHERE id=?`,
 		b.Title, b.SortTitle, b.OriginalTitle, b.Description, b.ImageURL,
 		b.ReleaseDate, string(genresJSON), b.AverageRating, b.RatingsCount,
 		b.Monitored, b.Status, b.AnyEditionOK, b.SelectedEditionID,
-		b.FilePath, b.Language, b.MetadataProvider, b.LastMetadataRefreshAt, now, b.ID)
+		b.FilePath, b.Language, mediaType, b.Narrator, b.DurationSeconds, b.ASIN,
+		b.MetadataProvider, b.LastMetadataRefreshAt, now, b.ID)
 	if err != nil {
 		return fmt.Errorf("update book %d: %w", b.ID, err)
 	}
@@ -140,7 +154,9 @@ func (r *BookRepo) query(ctx context.Context, q string, args []any) ([]models.Bo
 			&b.OriginalTitle, &b.Description, &b.ImageURL, &b.ReleaseDate,
 			&genresStr, &b.AverageRating, &b.RatingsCount,
 			&monitored, &b.Status, &anyEditionOK, &b.SelectedEditionID,
-			&b.FilePath, &b.Language, &b.MetadataProvider, &b.LastMetadataRefreshAt,
+			&b.FilePath, &b.Language, &b.MediaType,
+			&b.Narrator, &b.DurationSeconds, &b.ASIN,
+			&b.MetadataProvider, &b.LastMetadataRefreshAt,
 			&b.CreatedAt, &b.UpdatedAt,
 		)
 		if err != nil {

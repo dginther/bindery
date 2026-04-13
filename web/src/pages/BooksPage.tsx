@@ -25,6 +25,7 @@ export default function BooksPage() {
   const [books, setBooks] = useState<Book[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('')
+  const [mediaFilter, setMediaFilter] = useState<'' | 'ebook' | 'audiobook'>('')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortMode>('title-az')
 
@@ -35,6 +36,7 @@ export default function BooksPage() {
   const filtered = useMemo(() => {
     let list = books
     if (statusFilter) list = list.filter(b => b.status === statusFilter)
+    if (mediaFilter) list = list.filter(b => (b.mediaType || 'ebook') === mediaFilter)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       list = list.filter(b =>
@@ -55,11 +57,11 @@ export default function BooksPage() {
       return da - db
     })
     return list
-  }, [books, statusFilter, search, sort])
+  }, [books, statusFilter, mediaFilter, search, sort])
 
   const { pageItems, paginationProps, reset } = usePagination(filtered, 50)
 
-  useEffect(() => { reset() }, [statusFilter, search, sort, reset])
+  useEffect(() => { reset() }, [statusFilter, mediaFilter, search, sort, reset])
 
   const statusBtnCls = (active: boolean) =>
     `px-3 py-1 rounded-md text-xs font-medium transition-colors ${active ? 'bg-slate-300 dark:bg-zinc-700 text-slate-900 dark:text-white' : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`
@@ -96,12 +98,17 @@ export default function BooksPage() {
         </div>
       </div>
 
-      <div className="flex gap-1 mb-4">
+      <div className="flex gap-1 mb-4 flex-wrap">
         <span className="text-xs text-slate-600 dark:text-zinc-500 mr-1 self-center">Sort:</span>
         <button onClick={() => setSort('title-az')} className={sortBtnCls(sort === 'title-az')}>A–Z</button>
         <button onClick={() => setSort('title-za')} className={sortBtnCls(sort === 'title-za')}>Z–A</button>
         <button onClick={() => setSort('date-new')} className={sortBtnCls(sort === 'date-new')}>Newest</button>
         <button onClick={() => setSort('date-old')} className={sortBtnCls(sort === 'date-old')}>Oldest</button>
+
+        <span className="text-xs text-slate-600 dark:text-zinc-500 mx-2 self-center">Type:</span>
+        <button onClick={() => setMediaFilter('')} className={sortBtnCls(mediaFilter === '')}>All</button>
+        <button onClick={() => setMediaFilter('ebook')} className={sortBtnCls(mediaFilter === 'ebook')}>📖 Ebook</button>
+        <button onClick={() => setMediaFilter('audiobook')} className={sortBtnCls(mediaFilter === 'audiobook')}>🎧 Audiobook</button>
       </div>
 
       {loading ? (
@@ -125,6 +132,9 @@ export default function BooksPage() {
                 <div className={`absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-medium ${statusColors[book.status] || 'bg-slate-300 dark:bg-zinc-700 text-slate-600 dark:text-zinc-400'}`}>
                   {statusLabel[book.status] ?? book.status}
                 </div>
+                {book.mediaType === 'audiobook' && (
+                  <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-600/90 text-white">🎧</div>
+                )}
               </div>
               <div className="p-2">
                 <h3 className="text-xs font-medium truncate" title={book.title}>{book.title}</h3>

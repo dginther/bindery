@@ -135,8 +135,10 @@ func (s *Scheduler) searchWanted() {
 			authorName = a.Name
 		}
 		crit := indexer.MatchCriteria{
-			Title:  book.Title,
-			Author: authorName,
+			Title:     book.Title,
+			Author:    authorName,
+			MediaType: book.MediaType,
+			ASIN:      book.ASIN,
 		}
 		if book.ReleaseDate != nil {
 			crit.Year = book.ReleaseDate.Year()

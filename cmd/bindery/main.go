@@ -93,7 +93,11 @@ func main() {
 
 	// Import scanner
 	namingTemplate := defaultNamingTemplate(settingsRepo)
-	importScanner := importer.NewScanner(downloadRepo, dlClientRepo, bookRepo, authorRepo, historyRepo, cfg.LibraryDir, namingTemplate)
+	audiobookTemplate := audiobookNamingTemplate(settingsRepo)
+	importScanner := importer.NewScanner(
+		downloadRepo, dlClientRepo, bookRepo, authorRepo, historyRepo,
+		cfg.LibraryDir, cfg.AudiobookDir, namingTemplate, audiobookTemplate,
+	)
 
 	// Scheduler
 	sched := scheduler.New(importScanner, idxSearcher, metaAgg,
@@ -107,7 +111,7 @@ func main() {
 	// API handlers
 	searchHandler := api.NewSearchHandler(metaAgg)
 	authorHandler := api.NewAuthorHandler(authorRepo, bookRepo, metaAgg, settingsRepo)
-	bookHandler := api.NewBookHandler(bookRepo)
+	bookHandler := api.NewBookHandler(bookRepo, metaAgg)
 	indexerHandler := api.NewIndexerHandler(indexerRepo, bookRepo, authorRepo, idxSearcher, settingsRepo, blocklistRepo)
 	dlClientHandler := api.NewDownloadClientHandler(dlClientRepo)
 	queueHandler := api.NewQueueHandler(downloadRepo, dlClientRepo, bookRepo, historyRepo)
@@ -167,6 +171,7 @@ func main() {
 		r.Get("/book/{id}", bookHandler.Get)
 		r.Put("/book/{id}", bookHandler.Update)
 		r.Delete("/book/{id}", bookHandler.Delete)
+		r.Post("/book/{id}/enrich-audiobook", bookHandler.EnrichAudiobook)
 		r.Post("/book/{id}/search", indexerHandler.SearchBook)
 		r.Get("/book/{id}/file", fileHandler.Download)
 
@@ -310,6 +315,13 @@ func main() {
 
 func defaultNamingTemplate(settings *db.SettingsRepo) string {
 	if s, _ := settings.Get(context.Background(), "naming_template"); s != nil && s.Value != "" {
+		return s.Value
+	}
+	return ""
+}
+
+func audiobookNamingTemplate(settings *db.SettingsRepo) string {
+	if s, _ := settings.Get(context.Background(), "naming_template_audiobook"); s != nil && s.Value != "" {
 		return s.Value
 	}
 	return ""

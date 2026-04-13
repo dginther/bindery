@@ -62,7 +62,9 @@ func (h *IndexerHandler) Create(w http.ResponseWriter, r *http.Request) {
 		idx.Type = "newznab"
 	}
 	if len(idx.Categories) == 0 {
-		idx.Categories = []int{7000, 7020}
+		// Books (7000 parent, 7020 ebook) + Audio/Audiobook (3030).
+		// The searcher filters per-media-type at query time.
+		idx.Categories = []int{7000, 7020, 3030}
 	}
 
 	// Check for duplicate URL
@@ -161,8 +163,10 @@ func (h *IndexerHandler) SearchBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	crit := indexer.MatchCriteria{
-		Title:  book.Title,
-		Author: authorName,
+		Title:     book.Title,
+		Author:    authorName,
+		MediaType: book.MediaType,
+		ASIN:      book.ASIN,
 	}
 	if book.ReleaseDate != nil {
 		crit.Year = book.ReleaseDate.Year()

@@ -18,26 +18,32 @@ import (
 
 // Scanner checks for completed downloads and imports them into the library.
 type Scanner struct {
-	downloads  *db.DownloadRepo
-	clients    *db.DownloadClientRepo
-	books      *db.BookRepo
-	authors    *db.AuthorRepo
-	history    *db.HistoryRepo
-	renamer    *Renamer
-	libraryDir string
+	downloads    *db.DownloadRepo
+	clients      *db.DownloadClientRepo
+	books        *db.BookRepo
+	authors      *db.AuthorRepo
+	history      *db.HistoryRepo
+	renamer      *Renamer
+	libraryDir   string
+	audiobookDir string
 }
 
 // NewScanner creates an import scanner.
 func NewScanner(downloads *db.DownloadRepo, clients *db.DownloadClientRepo,
-	books *db.BookRepo, authors *db.AuthorRepo, history *db.HistoryRepo, libraryDir, namingTemplate string) *Scanner {
+	books *db.BookRepo, authors *db.AuthorRepo, history *db.HistoryRepo,
+	libraryDir, audiobookDir, namingTemplate, audiobookTemplate string) *Scanner {
+	if audiobookDir == "" {
+		audiobookDir = libraryDir
+	}
 	return &Scanner{
-		downloads:  downloads,
-		clients:    clients,
-		books:      books,
-		authors:    authors,
-		history:    history,
-		renamer:    NewRenamer(namingTemplate),
-		libraryDir: libraryDir,
+		downloads:    downloads,
+		clients:      clients,
+		books:        books,
+		authors:      authors,
+		history:      history,
+		renamer:      NewRenamerWithAudiobook(namingTemplate, audiobookTemplate),
+		libraryDir:   libraryDir,
+		audiobookDir: audiobookDir,
 	}
 }
 
@@ -127,6 +133,29 @@ func (s *Scanner) tryImport(ctx context.Context, dl *models.Download, downloadPa
 				author = a
 			}
 		}
+	}
+
+	// Audiobook path: move the entire download directory as a unit so
+	// multi-part m4b/mp3 files, cover art, and cue sheets stay together.
+	if book != nil && book.MediaType == models.MediaTypeAudiobook {
+		destDir := s.renamer.AudiobookDestDir(s.audiobookDir, author, book)
+		slog.Info("importing audiobook folder", "src", downloadPath, "dst", destDir)
+		if err := MoveDir(downloadPath, destDir); err != nil {
+			slog.Error("failed to import audiobook folder", "src", downloadPath, "error", err)
+			return
+		}
+		s.books.SetFilePath(ctx, book.ID, destDir)
+		s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusImported)
+		slog.Info("audiobook imported", "title", book.Title, "path", destDir)
+
+		eventData, _ := json.Marshal(map[string]string{"path": destDir})
+		s.history.Create(ctx, &models.HistoryEvent{
+			BookID:      dl.BookID,
+			EventType:   models.HistoryEventBookImported,
+			SourceTitle: dl.Title,
+			Data:        string(eventData),
+		})
+		return
 	}
 
 	for _, srcFile := range bookFiles {

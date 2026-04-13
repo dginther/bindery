@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vavallee/bindery/internal/metadata/audnex"
 	"github.com/vavallee/bindery/internal/models"
 )
 
@@ -16,6 +17,7 @@ import (
 type Aggregator struct {
 	primary   Provider
 	enrichers []Provider
+	audnex    *audnex.Client
 	cache     *ttlCache
 }
 
@@ -24,8 +26,34 @@ func NewAggregator(primary Provider, enrichers ...Provider) *Aggregator {
 	return &Aggregator{
 		primary:   primary,
 		enrichers: enrichers,
+		audnex:    audnex.New(""),
 		cache:     newTTLCache(24 * time.Hour),
 	}
+}
+
+// EnrichAudiobook fills narrator, duration, and cover from audnex when a
+// book has MediaType=audiobook and a known ASIN. No-op otherwise.
+func (a *Aggregator) EnrichAudiobook(ctx context.Context, book *models.Book) error {
+	if book == nil || book.MediaType != models.MediaTypeAudiobook || book.ASIN == "" {
+		return nil
+	}
+	b, err := a.audnex.GetBook(ctx, book.ASIN)
+	if err != nil || b == nil {
+		return err
+	}
+	if narr := b.NarratorList(); narr != "" {
+		book.Narrator = narr
+	}
+	if dur := b.DurationSeconds(); dur > 0 {
+		book.DurationSeconds = dur
+	}
+	if book.ImageURL == "" && b.Image != "" {
+		book.ImageURL = b.Image
+	}
+	if book.Description == "" && b.Summary != "" {
+		book.Description = b.Summary
+	}
+	return nil
 }
 
 func (a *Aggregator) SearchAuthors(ctx context.Context, query string) ([]models.Author, error) {

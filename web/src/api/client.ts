@@ -42,6 +42,7 @@ export const api = {
   updateBook: (id: number, data: Partial<Book>) => request<Book>(`/book/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteBook: (id: number) => request<void>(`/book/${id}`, { method: 'DELETE' }),
   searchBook: (id: number) => request<SearchResult[]>(`/book/${id}/search`, { method: 'POST' }),
+  enrichAudiobook: (id: number) => request<Book>(`/book/${id}/enrich-audiobook`, { method: 'POST' }),
 
   // Wanted
   listWanted: () => request<Book[]>('/wanted/missing'),
@@ -142,6 +143,8 @@ export interface Author {
   statistics?: { bookCount: number; availableBookCount: number; wantedBookCount: number }
 }
 
+export type MediaType = 'ebook' | 'audiobook'
+
 export interface Book {
   id: number
   foreignBookId: string
@@ -154,6 +157,10 @@ export interface Book {
   monitored: boolean
   status: string
   filePath: string
+  mediaType: MediaType
+  narrator?: string
+  durationSeconds?: number
+  asin?: string
   author?: Author
 }
 

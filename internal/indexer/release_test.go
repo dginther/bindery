@@ -109,3 +109,20 @@ func TestParseReleaseISBN(t *testing.T) {
 		t.Errorf("ISBN = %q, want 9780449912553", p.ISBN)
 	}
 }
+
+func TestParseReleaseASIN(t *testing.T) {
+	p := ParseRelease("Dune.Herbert.[B0036S4B2G].m4b")
+	if p.ASIN != "B0036S4B2G" {
+		t.Errorf("ASIN = %q, want B0036S4B2G", p.ASIN)
+	}
+	// Must not match random words that don't fit the Audible shape.
+	p2 := ParseRelease("Title.release.mp3")
+	if p2.ASIN != "" {
+		t.Errorf("unexpected ASIN extracted: %q", p2.ASIN)
+	}
+	// Must not match lowercase (Audible ASINs are uppercase).
+	p3 := ParseRelease("title b0036s4b2g.mp3")
+	if p3.ASIN != "" {
+		t.Errorf("lowercase ASIN-shape should not match: %q", p3.ASIN)
+	}
+}
