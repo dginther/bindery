@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/vavallee/bindery
-  tag: "sha-7cfd1b8"
+  tag: "sha-37f96de"
   pullPolicy: IfNotPresent
 
 service:
