@@ -217,19 +217,23 @@ func TestFilterCategoriesForMedia(t *testing.T) {
 	if len(audio) != 1 || audio[0] != 3030 {
 		t.Errorf("audiobook filter = %v, want [3030]", audio)
 	}
-	// Empty input passes through.
-	if got := filterCategoriesForMedia(nil, "ebook"); got != nil {
-		t.Errorf("nil input should pass through, got %v", got)
+	// Empty input falls back to the standard category for the media type.
+	if got := filterCategoriesForMedia(nil, "ebook"); len(got) != 2 || got[0] != 7000 {
+		t.Errorf("nil + ebook should fall back to [7000 7020], got %v", got)
+	}
+	if got := filterCategoriesForMedia(nil, "audiobook"); len(got) != 1 || got[0] != 3030 {
+		t.Errorf("nil + audiobook should fall back to [3030], got %v", got)
 	}
 	// Unknown type falls back to books.
 	if got := filterCategoriesForMedia(all, ""); len(got) != 2 {
 		t.Errorf("empty type should default to books, got %v", got)
 	}
-	// If no categories match the requested prefix, return the original
-	// list so the user's configuration still gets sent.
+	// Pre-v0.5.0 indexer config without 3030 still searches audiobooks
+	// via the fallback 3030 category rather than silently returning
+	// ebook results.
 	booksOnly := []int{7000, 7020}
-	if got := filterCategoriesForMedia(booksOnly, "audiobook"); len(got) != 2 {
-		t.Errorf("no-match should return original list, got %v", got)
+	if got := filterCategoriesForMedia(booksOnly, "audiobook"); len(got) != 1 || got[0] != 3030 {
+		t.Errorf("no-match audiobook should fall back to [3030], got %v", got)
 	}
 }
 

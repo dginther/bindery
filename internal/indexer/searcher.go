@@ -37,20 +37,22 @@ type MatchCriteria struct {
 	MediaType string // models.MediaTypeEbook or models.MediaTypeAudiobook
 }
 
-// filterCategoriesForMedia returns a subset of the indexer's configured
-// categories relevant to the requested media type. If the configured set
-// already contains none of the relevant prefixes, it's returned unchanged
-// (user knows what they're doing, or it's an all-caps generic indexer).
+// filterCategoriesForMedia returns the subset of configured indexer
+// categories relevant to the requested media type. If the indexer has no
+// categories matching the needed prefix (e.g. pre-v0.5.0 indexer configs
+// that only list 7000/7020 but the user is searching for an audiobook),
+// we substitute the standard Newznab category for that media type rather
+// than silently sending an ebook query — otherwise the search appears to
+// succeed but returns the wrong kind of release.
 func filterCategoriesForMedia(cats []int, mediaType string) []int {
-	if len(cats) == 0 {
-		return cats
+	wantPrefix := 7
+	fallback := []int{7000, 7020}
+	if mediaType == "audiobook" {
+		wantPrefix = 3
+		fallback = []int{3030}
 	}
-	var wantPrefix int
-	switch mediaType {
-	case "audiobook":
-		wantPrefix = 3 // audio
-	default:
-		wantPrefix = 7 // books
+	if len(cats) == 0 {
+		return fallback
 	}
 	var out []int
 	for _, c := range cats {
@@ -59,7 +61,7 @@ func filterCategoriesForMedia(cats []int, mediaType string) []int {
 		}
 	}
 	if len(out) == 0 {
-		return cats
+		return fallback
 	}
 	return out
 }
