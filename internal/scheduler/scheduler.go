@@ -64,8 +64,11 @@ func New(
 
 // Start registers and runs all background jobs.
 func (s *Scheduler) Start() {
-	// Check downloads every 60 seconds
-	s.cron.AddFunc("@every 60s", func() {
+	// Check downloads every 15 seconds so completed imports land quickly
+	// after SABnzbd finishes post-processing (unrar/par-check). The actual
+	// lag between "100%" and "imported" = SAB post-processing time +
+	// up to 15s poll + file-move time.
+	s.cron.AddFunc("@every 15s", func() {
 		slog.Debug("job: check downloads")
 		s.scanner.CheckDownloads(context.Background())
 	})

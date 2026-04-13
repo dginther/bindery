@@ -22,9 +22,27 @@ function formatDate(s: string) {
   })
 }
 
-function parseEventData(data: string): { message?: string; path?: string; [k: string]: unknown } {
+function parseEventData(data: string): { message?: string; path?: string; size?: number; [k: string]: unknown } {
   if (!data) return {}
   try { return JSON.parse(data) } catch { return {} }
+}
+
+function formatSize(n: number): string {
+  if (!n || n <= 0) return ''
+  if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB'
+  if (n >= 1048576) return (n / 1048576).toFixed(0) + ' MB'
+  return (n / 1024).toFixed(0) + ' KB'
+}
+
+// Detect media type from the release title — ebook formats vs audiobook
+// formats. Falls back to '' when nothing matches (older events or
+// non-grab records). Preferred over a server round-trip since the info
+// is already in the title.
+function detectMediaType(title: string): '' | 'ebook' | 'audiobook' {
+  const t = title.toLowerCase()
+  if (/\b(m4b|m4a|mp3|flac|ogg)\b/.test(t)) return 'audiobook'
+  if (/\b(epub|mobi|azw3?|pdf|djvu|fb2)\b/.test(t)) return 'ebook'
+  return ''
 }
 
 const BLOCKLISTABLE = new Set(['grabbed', 'downloadFailed', 'importFailed'])
@@ -95,8 +113,10 @@ export default function HistoryPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800">
-                    <th className="text-left px-4 py-3 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase tracking-wider">Event Type</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase tracking-wider">Event</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase tracking-wider">Source Title</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase tracking-wider">Type</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase tracking-wider">Size</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase tracking-wider">Date</th>
                     <th className="px-4 py-3" />
                   </tr>
@@ -106,6 +126,8 @@ export default function HistoryPage() {
                     const parsed = parseEventData(event.data)
                     const detail = parsed.message || parsed.path || ''
                     const isError = event.eventType === 'downloadFailed' || event.eventType === 'importFailed'
+                    const size = typeof parsed.size === 'number' ? parsed.size : 0
+                    const mt = detectMediaType(event.sourceTitle)
                     return (
                       <tr key={event.id} className="bg-slate-100/50 dark:bg-zinc-900/50 hover:bg-slate-200/50 dark:hover:bg-zinc-800/50 transition-colors">
                         <td className="px-4 py-3 align-top">
@@ -122,6 +144,18 @@ export default function HistoryPage() {
                               {detail}
                             </div>
                           )}
+                        </td>
+                        <td className="px-4 py-3 align-top text-xs whitespace-nowrap">
+                          {mt === 'audiobook' ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 text-[10px] font-medium">🎧 Audiobook</span>
+                          ) : mt === 'ebook' ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-medium">📖 Ebook</span>
+                          ) : (
+                            <span className="text-slate-500 dark:text-zinc-600">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-zinc-400 whitespace-nowrap align-top text-xs font-mono">
+                          {formatSize(size) || <span className="text-slate-500 dark:text-zinc-600">—</span>}
                         </td>
                         <td className="px-4 py-3 text-slate-600 dark:text-zinc-400 whitespace-nowrap align-top text-xs">
                           {formatDate(event.createdAt)}
@@ -157,12 +191,25 @@ export default function HistoryPage() {
               const parsed = parseEventData(event.data)
               const detail = parsed.message || parsed.path || ''
               const isError = event.eventType === 'downloadFailed' || event.eventType === 'importFailed'
+              const size = typeof parsed.size === 'number' ? parsed.size : 0
+              const mt = detectMediaType(event.sourceTitle)
               return (
                 <div key={event.id} className="border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-100/50 dark:bg-zinc-900/50 p-3">
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${EVENT_TYPE_COLORS[event.eventType] ?? 'bg-slate-300 dark:bg-zinc-700 text-slate-600 dark:text-zinc-400'}`}>
-                      {event.eventType}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${EVENT_TYPE_COLORS[event.eventType] ?? 'bg-slate-300 dark:bg-zinc-700 text-slate-600 dark:text-zinc-400'}`}>
+                        {event.eventType}
+                      </span>
+                      {mt === 'audiobook' && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 text-[10px] font-medium">🎧</span>
+                      )}
+                      {mt === 'ebook' && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-medium">📖</span>
+                      )}
+                      {size > 0 && (
+                        <span className="text-[10px] text-slate-600 dark:text-zinc-500 font-mono">{formatSize(size)}</span>
+                      )}
+                    </div>
                     <span className="text-[10px] text-slate-600 dark:text-zinc-500">{formatDate(event.createdAt)}</span>
                   </div>
                   <p className="text-sm text-slate-800 dark:text-zinc-200 break-words mb-1">

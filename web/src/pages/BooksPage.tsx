@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import BookActionsModal from '../components/BookActionsModal'
 import { api, Book } from '../api/client'
 import Pagination from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
@@ -28,6 +29,7 @@ export default function BooksPage() {
   const [mediaFilter, setMediaFilter] = useState<'' | 'ebook' | 'audiobook'>('')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortMode>('title-az')
+  const [actionBook, setActionBook] = useState<Book | null>(null)
 
   useEffect(() => {
     api.listBooks().then(setBooks).catch(console.error).finally(() => setLoading(false))
@@ -120,7 +122,11 @@ export default function BooksPage() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {pageItems.map(book => (
-            <div key={book.id} className="border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-100 dark:bg-zinc-900 overflow-hidden group">
+            <button
+              key={book.id}
+              onClick={() => setActionBook(book)}
+              className="border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-100 dark:bg-zinc-900 overflow-hidden group text-left hover:border-emerald-500 transition-colors"
+            >
               <div className="aspect-[2/3] bg-slate-200 dark:bg-zinc-800 relative">
                 {book.imageUrl ? (
                   <img src={book.imageUrl} alt={book.title} className="w-full h-full object-cover" />
@@ -145,6 +151,7 @@ export default function BooksPage() {
                   {book.filePath && (
                     <a
                       href={`/api/v1/book/${book.id}/file`}
+                      onClick={e => e.stopPropagation()}
                       className="text-[10px] text-emerald-400 hover:text-emerald-300"
                       title="Download file"
                     >
@@ -153,11 +160,22 @@ export default function BooksPage() {
                   )}
                 </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
       <Pagination {...paginationProps} />
+
+      {actionBook && (
+        <BookActionsModal
+          book={actionBook}
+          onClose={() => setActionBook(null)}
+          onUpdated={(u) => {
+            setBooks(bs => bs.map(b => b.id === u.id ? u : b))
+            setActionBook(u)
+          }}
+        />
+      )}
     </div>
   )
 }
