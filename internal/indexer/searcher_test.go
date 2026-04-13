@@ -299,6 +299,35 @@ func TestRankResultsManyItemsOrdering(t *testing.T) {
 	}
 }
 
+func TestFilterUsenetJunk(t *testing.T) {
+	junk := []string{
+		`NMR: Project Hail Mary - Andy Weir - 2021 [12/22] - "Andy Weir - 2021 - Project Hail Mary.part09.rar" yEnc`,
+		`Something.vol003+004.par2`,
+		`Book.sfv`,
+		`Post [1/5] - "chunk" yEnc`,
+	}
+	keepers := []string{
+		`[M4B] Andy Weir-Project Hail Mary`,
+		`Andy.Weir-Project.Hail.Mary.m4b`,
+		`Russell-The.Sparrow.EPUB`,
+	}
+	input := toResults(append(junk, keepers...)...)
+	out := filterUsenetJunk(input)
+	if len(out) != len(keepers) {
+		t.Errorf("expected %d survivors, got %d: %v", len(keepers), len(out), resultTitles(out))
+	}
+	for _, j := range junk {
+		if contains(out, j) {
+			t.Errorf("junk slipped through: %q", j)
+		}
+	}
+	for _, k := range keepers {
+		if !contains(out, k) {
+			t.Errorf("keeper was dropped: %q", k)
+		}
+	}
+}
+
 func TestIsAudiobookFormat(t *testing.T) {
 	for _, f := range []string{"m4b", "m4a", "mp3", "flac", "ogg"} {
 		if !isAudiobookFormat(f) {

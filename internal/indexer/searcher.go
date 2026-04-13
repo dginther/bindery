@@ -7,6 +7,7 @@ import (
 	"context"
 	"log/slog"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -109,6 +110,7 @@ func (s *Searcher) SearchBook(ctx context.Context, indexers []models.Indexer, c 
 	wg.Wait()
 
 	results = dedupe(results)
+	results = filterUsenetJunk(results)
 	results = filterRelevant(results, c.Title, c.Author)
 	rankResults(results, c)
 	return results
@@ -406,6 +408,33 @@ func isAudiobookFormat(format string) bool {
 		return true
 	}
 	return false
+}
+
+// usenetJunkRe matches raw per-article Usenet posting titles that some
+// indexers surface alongside (or instead of) the aggregated release:
+// individual RAR parts, PAR2 recovery blocks, SFV checksums, yEnc
+// markers, and "[N/M]" post-index brackets. Grabbing one of these
+// produces a partial/unusable download, so they're filtered upstream
+// rather than ranked.
+var usenetJunkRe = regexp.MustCompile(
+	`(?i)` +
+		`\.part\d+\.rar\b` + `|` + // File.part03.rar
+		`\.vol\d+\+\d+\.par2\b` + `|` + // File.vol003+004.par2
+		`\.sfv\b` + `|` + // File.sfv
+		`\byEnc\b` + `|` + // trailing yEnc marker
+		`\[\d+/\d+\]`, // [12/22] post-index bracket
+)
+
+// filterUsenetJunk drops results whose titles look like raw per-article
+// postings rather than coherent releases.
+func filterUsenetJunk(results []newznab.SearchResult) []newznab.SearchResult {
+	out := make([]newznab.SearchResult, 0, len(results))
+	for _, r := range results {
+		if !usenetJunkRe.MatchString(r.Title) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // detectQuality scans a result title for known quality keywords and returns
