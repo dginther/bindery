@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, development]
+    branches: [main, development, 'feat/**']
     tags: ['v*']
   pull_request:
 
@@ -16,7 +16,7 @@ jobs:
   # Eliminates inter-job wait times and redundant checkouts
   build:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development' || startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development' || startsWith(github.ref, 'refs/heads/feat/') || startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,6 +53,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=development,enable=${{ github.ref == 'refs/heads/development' }}
+            type=ref,event=branch,enable=${{ startsWith(github.ref, 'refs/heads/feat/') }}
             type=semver,pattern={{version}}
       # Derive the in-binary VERSION string shown in the UI:
       #   tag push      → "v0.4.2"
@@ -66,6 +67,9 @@ jobs:
             echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           elif [[ "$GITHUB_REF" == refs/heads/development ]]; then
             echo "version=dev-${short}" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/heads/feat/* ]]; then
+            branch="${GITHUB_REF_NAME#feat/}"
+            echo "version=${branch}-${short}" >> "$GITHUB_OUTPUT"
           else
             echo "version=sha-${short}" >> "$GITHUB_OUTPUT"
           fi
@@ -88,12 +92,12 @@ jobs:
       # ArgoCD can track either branch — switch targetRevision to flip
       # between prod (main) and dev (development).
       - name: Update Helm image tag
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development' || startsWith(github.ref, 'refs/heads/feat/')
         run: |
           IMAGE_TAG="sha-${GITHUB_SHA::7}"
           sed -i "s|tag:.*|tag: \"${IMAGE_TAG}\"|" charts/bindery/values.yaml
       - name: Commit and push
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development' || startsWith(github.ref, 'refs/heads/feat/')
         run: |
           git config user.name "vavallee"
           git config user.email "75899046+vavallee@users.noreply.github.com"
