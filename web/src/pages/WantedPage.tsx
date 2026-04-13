@@ -109,8 +109,8 @@ export default function WantedPage() {
                     <img src={book.imageUrl} alt="" className="w-10 h-14 object-cover rounded flex-shrink-0" />
                   )}
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-medium text-sm truncate">{book.title}</h3>
+                    <h3 className="font-medium text-sm truncate">{book.title}</h3>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <select
                         value={book.mediaType || 'ebook'}
                         onChange={e => changeMediaType(book, e.target.value as 'ebook' | 'audiobook')}

@@ -132,8 +132,8 @@ export default function BooksPage() {
               <thead>
                 <tr className="bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800">
                   <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase">Title</th>
-                  <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase">Author</th>
-                  <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase">Year</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase hidden md:table-cell">Author</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase hidden sm:table-cell">Year</th>
                   <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase">Type</th>
                   <th className="text-left px-3 py-2 text-xs font-medium text-slate-600 dark:text-zinc-400 uppercase">Status</th>
                 </tr>
@@ -155,8 +155,8 @@ export default function BooksPage() {
                         <span className="text-slate-800 dark:text-zinc-200 truncate">{book.title}</span>
                       </Link>
                     </td>
-                    <td className="px-3 py-2 text-slate-600 dark:text-zinc-400 whitespace-nowrap">{book.author?.authorName || '—'}</td>
-                    <td className="px-3 py-2 text-slate-600 dark:text-zinc-400 whitespace-nowrap">{book.releaseDate ? new Date(book.releaseDate).getFullYear() : '—'}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-zinc-400 whitespace-nowrap hidden md:table-cell">{book.author?.authorName || '—'}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-zinc-400 whitespace-nowrap hidden sm:table-cell">{book.releaseDate ? new Date(book.releaseDate).getFullYear() : '—'}</td>
                     <td className="px-3 py-2 text-xs whitespace-nowrap">
                       {book.mediaType === 'audiobook' ? '🎧 Audiobook' : '📖 Ebook'}
                     </td>

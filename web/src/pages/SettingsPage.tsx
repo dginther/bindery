@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, Indexer, DownloadClient, NotificationConfig, QualityProfile, MetadataProfile } from '../api/client'
 import ThemeToggle from '../components/ThemeToggle'
 
-type Tab = 'indexers' | 'clients' | 'notifications' | 'quality' | 'metadata' | 'general'
+type Tab = 'indexers' | 'clients' | 'notifications' | 'quality' | 'metadata' | 'general' | 'import'
 
 const inputCls = 'w-full bg-slate-200 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-slate-400 dark:focus:border-zinc-600'
 const tabCls = (active: boolean) =>
@@ -38,13 +38,14 @@ export default function SettingsPage() {
       <h2 className="text-2xl font-bold mb-6">Settings</h2>
 
       <div className="flex flex-wrap gap-2 mb-6">
-        {(['indexers', 'clients', 'notifications', 'quality', 'metadata', 'general'] as Tab[]).map(t => (
+        {(['indexers', 'clients', 'notifications', 'quality', 'metadata', 'import', 'general'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} className={tabCls(tab === t)}>
             {t === 'indexers' ? 'Indexers'
               : t === 'clients' ? 'Download Clients'
               : t === 'notifications' ? 'Notifications'
               : t === 'quality' ? 'Quality Profiles'
               : t === 'metadata' ? 'Metadata Profiles'
+              : t === 'import' ? 'Import'
               : 'General'}
           </button>
         ))}
@@ -369,8 +370,137 @@ export default function SettingsPage() {
       )}
 
       {/* General */}
+      {tab === 'import' && (
+        <ImportTab />
+      )}
+
       {tab === 'general' && (
         <GeneralTab />
+      )}
+    </div>
+  )
+}
+
+interface MigrateResult {
+  requested?: number
+  added?: number
+  skipped?: number
+  errors?: number
+  addedNames?: string[]
+  failures?: Record<string, string>
+}
+
+interface ReadarrResult {
+  authors?: MigrateResult
+  indexers?: MigrateResult
+  downloadClients?: MigrateResult
+  blocklist?: MigrateResult
+}
+
+function ImportTab() {
+  const [csvResult, setCsvResult] = useState<MigrateResult | null>(null)
+  const [readarrResult, setReadarrResult] = useState<ReadarrResult | null>(null)
+  const [uploading, setUploading] = useState<'csv' | 'readarr' | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const upload = async (endpoint: 'csv' | 'readarr', file: File) => {
+    setUploading(endpoint)
+    setErr(null)
+    setCsvResult(null)
+    setReadarrResult(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/v1/migrate/${endpoint}`, { method: 'POST', body: fd })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }))
+        throw new Error(body.error || `HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      if (endpoint === 'csv') setCsvResult(data)
+      else setReadarrResult(data)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Upload failed')
+    } finally {
+      setUploading(null)
+    }
+  }
+
+  const renderResult = (r: MigrateResult | undefined, label: string) => {
+    if (!r) return null
+    return (
+      <div className="p-3 border border-slate-200 dark:border-zinc-800 rounded bg-slate-100 dark:bg-zinc-900 space-y-1">
+        <div className="text-sm font-medium">{label}</div>
+        <div className="text-xs text-slate-600 dark:text-zinc-500">
+          {r.requested ?? 0} requested · {r.added ?? 0} added · {r.skipped ?? 0} skipped (already exist) · {r.errors ?? 0} failed
+        </div>
+        {r.failures && Object.keys(r.failures).length > 0 && (
+          <details className="text-xs">
+            <summary className="cursor-pointer text-red-600 dark:text-red-400">Show {Object.keys(r.failures).length} failures</summary>
+            <ul className="mt-2 space-y-0.5 font-mono">
+              {Object.entries(r.failures).map(([name, reason]) => (
+                <li key={name}><span className="text-slate-800 dark:text-zinc-200">{name}</span>: <span className="text-slate-500 dark:text-zinc-500">{reason}</span></li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8 max-w-2xl">
+      <section>
+        <h3 className="text-base font-semibold mb-2 text-slate-800 dark:text-zinc-200">CSV of author names</h3>
+        <p className="text-xs text-slate-600 dark:text-zinc-500 mb-3">
+          One name per line, or CSV columns <code className="text-[11px] bg-slate-200 dark:bg-zinc-800 px-1 rounded">name,monitored,searchOnAdd</code>.
+          Each name is resolved against OpenLibrary — the top match is added.
+        </p>
+        <label className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm font-medium cursor-pointer">
+          {uploading === 'csv' ? 'Importing…' : 'Upload CSV'}
+          <input
+            type="file"
+            accept=".csv,.txt,text/csv,text/plain"
+            className="hidden"
+            disabled={uploading !== null}
+            onChange={e => { const f = e.target.files?.[0]; if (f) upload('csv', f); e.currentTarget.value = '' }}
+          />
+        </label>
+        {csvResult && <div className="mt-4">{renderResult(csvResult, 'Authors')}</div>}
+      </section>
+
+      <section>
+        <h3 className="text-base font-semibold mb-2 text-slate-800 dark:text-zinc-200">Readarr database</h3>
+        <p className="text-xs text-slate-600 dark:text-zinc-500 mb-3">
+          Upload <code className="text-[11px] bg-slate-200 dark:bg-zinc-800 px-1 rounded">readarr.db</code> (typically under
+          <code className="text-[11px] bg-slate-200 dark:bg-zinc-800 px-1 rounded mx-1">/config/readarr.db</code>).
+          Authors are re-resolved via OpenLibrary. Indexers, download clients, and blocklist entries port directly.
+          Run a library scan afterward to match existing book files.
+        </p>
+        <label className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm font-medium cursor-pointer">
+          {uploading === 'readarr' ? 'Importing (may take minutes)…' : 'Upload readarr.db'}
+          <input
+            type="file"
+            accept=".db,.sqlite,application/x-sqlite3,application/octet-stream"
+            className="hidden"
+            disabled={uploading !== null}
+            onChange={e => { const f = e.target.files?.[0]; if (f) upload('readarr', f); e.currentTarget.value = '' }}
+          />
+        </label>
+        {readarrResult && (
+          <div className="mt-4 space-y-2">
+            {renderResult(readarrResult.authors, 'Authors')}
+            {renderResult(readarrResult.indexers, 'Indexers')}
+            {renderResult(readarrResult.downloadClients, 'Download clients')}
+            {renderResult(readarrResult.blocklist, 'Blocklist')}
+          </div>
+        )}
+      </section>
+
+      {err && (
+        <div className="px-3 py-2 bg-red-100 dark:bg-red-950/30 border border-red-300 dark:border-red-900 rounded text-sm text-red-800 dark:text-red-300">
+          {err}
+        </div>
       )}
     </div>
   )

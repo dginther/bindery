@@ -20,6 +20,7 @@ import (
 	"github.com/vavallee/bindery/internal/metadata/googlebooks"
 	"github.com/vavallee/bindery/internal/metadata/hardcover"
 	"github.com/vavallee/bindery/internal/metadata/openlibrary"
+	"github.com/vavallee/bindery/internal/models"
 	"github.com/vavallee/bindery/internal/notifier"
 	"github.com/vavallee/bindery/internal/scheduler"
 	"github.com/vavallee/bindery/internal/webui"
@@ -88,6 +89,14 @@ func main() {
 	slog.Info("hardcover enrichment enabled")
 	metaAgg := metadata.NewAggregator(olClient, enrichers...)
 
+	// Optional CLI subcommand: `bindery migrate {csv,readarr} <path>`.
+	// Runs the import and exits; does not start the HTTP server. Useful
+	// for bulk first-time imports from a shell.
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		runMigrate(cfg, authorRepo, indexerRepo, dlClientRepo, blocklistRepo, metaAgg)
+		return
+	}
+
 	// Indexer searcher
 	idxSearcher := indexer.NewSearcher()
 
@@ -128,6 +137,10 @@ func main() {
 	delayProfileHandler := api.NewDelayProfileHandler(delayProfileRepo)
 	customFormatHandler := api.NewCustomFormatHandler(customFormatRepo)
 	backupHandler := api.NewBackupHandler(cfg.DBPath, cfg.DataDir)
+	migrateHandler := api.NewMigrateHandler(
+		authorRepo, indexerRepo, dlClientRepo, blocklistRepo, bookRepo, metaAgg,
+		func(a *models.Author) { authorHandler.FetchAuthorBooks(a) },
+	)
 
 	// Router
 	r := chi.NewRouter()
@@ -275,6 +288,10 @@ func main() {
 		r.Post("/backup", backupHandler.Create)
 		r.Post("/backup/{filename}/restore", backupHandler.Restore)
 		r.Delete("/backup/{filename}", backupHandler.Delete)
+
+		// Migration imports (CSV of author names, or Readarr SQLite DB).
+		r.Post("/migrate/csv", migrateHandler.ImportCSV)
+		r.Post("/migrate/readarr", migrateHandler.ImportReadarr)
 	})
 
 	// Serve embedded frontend

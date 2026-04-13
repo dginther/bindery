@@ -70,7 +70,7 @@ func streamZip(w http.ResponseWriter, srcDir string) {
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+zipName+"\"")
 
 	zw := zip.NewWriter(w)
-	defer zw.Close()
+	defer func() { _ = zw.Close() }()
 
 	_ = filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {

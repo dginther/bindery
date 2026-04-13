@@ -110,7 +110,7 @@ func (h *AuthorHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch and store books for this author
 	if req.SearchOnAdd {
-		go h.fetchAuthorBooks(author)
+		go h.FetchAuthorBooks(author)
 	}
 
 	writeJSON(w, http.StatusCreated, author)
@@ -181,11 +181,11 @@ func (h *AuthorHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go h.fetchAuthorBooks(author)
+	go h.FetchAuthorBooks(author)
 	writeJSON(w, http.StatusAccepted, map[string]string{"message": "refresh started"})
 }
 
-func (h *AuthorHandler) fetchAuthorBooks(author *models.Author) {
+func (h *AuthorHandler) FetchAuthorBooks(author *models.Author) {
 	ctx := contextBackground()
 	slog.Info("fetching books for author", "author", author.Name, "foreignId", author.ForeignID)
 

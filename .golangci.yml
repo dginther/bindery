@@ -55,6 +55,9 @@ linters:
         - G703
         # slog writes structured JSON/logfmt; "log injection" doesn't apply.
         - G706
+        # os.Open inside filepath.Walk on our own library/download dirs is
+        # not a symlink-TOCTOU surface — gosec can't reason about intent.
+        - G122
   exclusions:
     paths:
       - web/node_modules
