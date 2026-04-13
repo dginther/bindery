@@ -160,9 +160,13 @@ export default function AuthorsPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {pageItems.map(author => (
-            <div key={author.id} className="border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-100 dark:bg-zinc-900 overflow-hidden hover:border-emerald-500 transition-colors">
+        <div className="stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {pageItems.map((author, i) => (
+            <div
+              key={author.id}
+              style={{ ['--i' as string]: Math.min(i, 11) }}
+              className="border border-rule rounded-sm bg-paper-2 overflow-hidden shadow-letterpress hover:shadow-letterpress-hover hover:border-accent/60 transition-all duration-300"
+            >
               <Link to={`/author/${author.id}`} className="flex gap-3 p-4 hover:bg-slate-200/40 dark:hover:bg-zinc-800/40 transition-colors">
                 {author.imageUrl ? (
                   <img src={author.imageUrl} alt={author.authorName} className="w-16 h-16 rounded-full object-cover flex-shrink-0" />

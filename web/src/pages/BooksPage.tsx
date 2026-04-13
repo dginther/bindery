@@ -172,12 +172,13 @@ export default function BooksPage() {
           </div>
         </div>
         ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {pageItems.map(book => (
+        <div className="stagger grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
+          {pageItems.map((book, i) => (
             <Link
               key={book.id}
               to={`/book/${book.id}`}
-              className="border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-100 dark:bg-zinc-900 overflow-hidden group text-left hover:border-emerald-500 transition-colors block"
+              style={{ ['--i' as string]: Math.min(i, 11) }}
+              className="border border-rule rounded-sm bg-paper-2 overflow-hidden group text-left shadow-letterpress hover:shadow-letterpress-hover hover:border-accent/60 transition-all duration-300 block"
             >
               <div className="aspect-[2/3] bg-slate-200 dark:bg-zinc-800 relative">
                 {book.imageUrl ? (

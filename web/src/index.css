@@ -1,8 +1,144 @@
+@import '@fontsource-variable/fraunces/index.css';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Editorial / Bibliographic palette.
+ * CSS variables carry the colors; `html.dark` flips each one.
+ * Values are RGB triplets (no rgb()) so Tailwind's `/<alpha-value>`
+ * modifier works for ad-hoc opacity, e.g. `bg-accent/20`.
+ */
+:root {
+  --paper:      245 238 220;  /* warm cream, book page */
+  --paper-2:    236 227 207;  /* raised / card */
+  --paper-3:    225 214 187;  /* sunken / hover */
+  --ink:         27  22  18;  /* near-black, warm */
+  --ink-2:       80  70  58;  /* secondary text */
+  --ink-3:      123 112  94;  /* tertiary / muted */
+  --rule:       200 187 161;  /* hairline */
+  --rule-2:     174 159 127;  /* stronger rule */
+  --accent:      47  93  60;  /* archival forest */
+  --accent-2:    71 128  85;  /* hover / lighter */
+  --danger:     122  31  43;  /* oxblood / burgundy */
+  --danger-dim: 160  69  80;
+}
+
+html.dark {
+  --paper:       26  20  16;  /* deep umber — not pure black */
+  --paper-2:     40  31  24;
+  --paper-3:     56  44  34;
+  --ink:        232 223 207;  /* bone */
+  --ink-2:      194 182 160;
+  --ink-3:      138 127 106;
+  --rule:        58  47  38;
+  --rule-2:      82  66  52;
+  --accent:     184 147  90;  /* muted gold — flips from forest */
+  --accent-2:   208 170 110;
+  --danger:     176  78  86;
+  --danger-dim: 200 112 122;
+}
+
 @layer base {
-  html { background-color: rgb(248 250 252); } /* slate-50 */
-  html.dark { background-color: rgb(9 9 11); } /* zinc-950 */
+  html {
+    background-color: rgb(var(--paper));
+    color: rgb(var(--ink));
+    /* Thin vertical rule far left (book-page margin cue). Purely decorative. */
+    background-image: linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(max(16px, env(safe-area-inset-left))),
+      rgb(var(--rule) / .35) calc(max(16px, env(safe-area-inset-left))),
+      rgb(var(--rule) / .35) calc(max(16px, env(safe-area-inset-left)) + 1px),
+      transparent calc(max(16px, env(safe-area-inset-left)) + 1px)
+    );
+  }
+
+  body {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-feature-settings: 'ss01', 'cv08';  /* Plex's more characterful variants */
+    /* Paper grain overlay — dithered SVG noise at 5% opacity, inline to
+       avoid an extra network request. Flips tint in dark mode so it reads
+       as ink grain rather than dust. */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.10 0 0 0 0 0.08 0 0 0 0 0.07 0 0 0 0.5 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>");
+    background-repeat: repeat;
+  }
+
+  html.dark body {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.90 0 0 0 0 0.80 0 0 0 0.35 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>");
+  }
+
+  /* Page titles get the serif display face automatically — no per-page edit. */
+  h1, h2 {
+    font-family: 'Fraunces Variable', 'Fraunces', 'Iowan Old Style', Georgia, serif;
+    font-variation-settings: 'opsz' 144, 'SOFT' 40, 'wght' 500;
+    letter-spacing: -0.02em;
+    color: rgb(var(--ink));
+  }
+
+  /* The page titles authored as `<h2 className="text-2xl font-bold">Xs</h2>`
+     get upgraded to a proper display scale. Tailwind's `text-2xl` stays
+     on the markup but we bump up visually via a layer-base override when
+     the h2 carries `font-bold` (the established convention). */
+  h2.font-bold {
+    font-size: clamp(2rem, 2.4vw + 1rem, 2.6rem);
+    line-height: 1.05;
+    font-weight: 500;  /* Fraunces looks right at 500, not 700 */
+    font-variation-settings: 'opsz' 144, 'SOFT' 50, 'wght' 450;
+  }
+
+  h3, h4 {
+    font-family: 'Fraunces Variable', 'Fraunces', Georgia, serif;
+    font-variation-settings: 'opsz' 24, 'SOFT' 30, 'wght' 550;
+    letter-spacing: -0.01em;
+  }
+
+  /* Tabular figures + mono for anything that looks like a count, id, size.
+     Catalog-card feel. */
+  code, kbd, samp, pre, .font-mono {
+    font-feature-settings: 'ss02', 'zero';
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Catalog bar — tiny uppercase mono row under the masthead with live counts. */
+  .catalog-bar {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(var(--ink-2));
+  }
+
+  .catalog-bar .count {
+    color: rgb(var(--ink));
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Staggered reveal for list/grid children. Applies to direct children of
+     `.stagger` — each gets an incremental delay via the `--i` custom prop. */
+  .stagger > * {
+    animation: fade-up 260ms cubic-bezier(.2,.6,.2,1) both;
+    animation-delay: calc(var(--i, 0) * 35ms);
+  }
+
+  /* Hairline rule used as a chapter divider under page titles. */
+  .chapter-rule {
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      rgb(var(--ink)) 0,
+      rgb(var(--ink)) 56px,
+      rgb(var(--rule)) 56px,
+      rgb(var(--rule)) 100%
+    );
+  }
 }
