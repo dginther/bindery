@@ -309,13 +309,20 @@ func dedupe(results []newznab.SearchResult) []newznab.SearchResult {
 // quality, edition markers (RETAIL/UNABRIDGED/ABRIDGED), year match against
 // the book's release year, grabs, size, and an ISBN exact-match boost.
 func rankResults(results []newznab.SearchResult, c MatchCriteria) {
-	scores := make([]float64, len(results))
-	for i, r := range results {
-		scores[i] = scoreResult(r, c)
+	type scored struct {
+		r     newznab.SearchResult
+		score float64
 	}
-	sort.SliceStable(results, func(i, j int) bool {
-		return scores[i] > scores[j]
+	items := make([]scored, len(results))
+	for i, r := range results {
+		items[i] = scored{r, scoreResult(r, c)}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].score > items[j].score
 	})
+	for i, it := range items {
+		results[i] = it.r
+	}
 }
 
 // scoreResult computes the composite ranking score for a single result.

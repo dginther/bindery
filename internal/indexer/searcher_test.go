@@ -257,6 +257,48 @@ func TestScoreResultMediaTypePenalty(t *testing.T) {
 	}
 }
 
+// Regression: rankResults used to precompute scores into a parallel
+// slice and read them via stale indices during the in-place sort,
+// leaving results effectively unsorted. This test exercises >2 items
+// so any mis-sort surfaces.
+func TestRankResultsManyItemsOrdering(t *testing.T) {
+	results := toResults(
+		// Intentionally scrambled so initial and ranked orders differ.
+		`NMR: Project Hail Mary - Andy Weir - 2021 [12/22] - "Part.09.rar"`,
+		`NMR: Project Hail Mary - Andy Weir - 2021 [01/22] - "Part.01.rar"`,
+		`[M4B] Andy.Weir-Project.Hail.Mary`,
+		`Andy.Weir-Project.Hail.Mary.mp3`,
+		`NMR: Project Hail Mary - Andy Weir - 2021 [06/22] - "Part.03.rar"`,
+		`Project.Hail.Mary.ABRIDGED.mp3`,
+	)
+	rankResults(results, MatchCriteria{
+		Title:     "Project Hail Mary",
+		Author:    "Andy Weir",
+		MediaType: "audiobook",
+	})
+	// After ranking, a recognized audiobook format must be at the top
+	// (was getting buried under format-unknown NMR posts pre-fix).
+	if p := ParseRelease(results[0].Title); !isAudiobookFormat(p.Format) {
+		t.Errorf("top result should have an audiobook format, got %q (Format=%q)", results[0].Title, p.Format)
+	}
+	// The unabridged M4B should beat the abridged MP3.
+	m4bIdx, abridgedIdx := -1, -1
+	for i, r := range results {
+		if r.Title == `[M4B] Andy.Weir-Project.Hail.Mary` {
+			m4bIdx = i
+		}
+		if r.Title == `Project.Hail.Mary.ABRIDGED.mp3` {
+			abridgedIdx = i
+		}
+	}
+	if m4bIdx < 0 || abridgedIdx < 0 {
+		t.Fatal("expected both tagged results to survive filtering")
+	}
+	if m4bIdx >= abridgedIdx {
+		t.Errorf("M4B (idx=%d) should outrank ABRIDGED mp3 (idx=%d)", m4bIdx, abridgedIdx)
+	}
+}
+
 func TestIsAudiobookFormat(t *testing.T) {
 	for _, f := range []string{"m4b", "m4a", "mp3", "flac", "ogg"} {
 		if !isAudiobookFormat(f) {
