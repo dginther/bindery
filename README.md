@@ -33,9 +33,12 @@
 
 ## Features
 
+> Audiobook support, routed book/author detail pages, grid/table views, and the CSV + Readarr database importers are currently only in the `development` branch (image tag `development` or `dev-<sha>`). They'll land on `main` in v0.5.0.
+
 ### Library management
 - **Author monitoring** — Add authors and Bindery tracks all their works automatically via OpenLibrary's author works endpoint
 - **Book tracking** — Per-book monitor toggle, status workflow (wanted → downloading → downloaded → imported)
+- **Ebooks and audiobooks** *(development)* — Mark any book as `ebook` or `audiobook`; the search pipeline picks the right Newznab categories (7020 vs 3030), ranker prefers the matching format, and the importer moves whole audiobook folders (multi-part `.m4b` / `.mp3`) as one unit into a separate audiobook library root.
 - **Series support** — Books grouped by series with position tracking and dedicated Series page
 - **Edition tracking** — Multiple editions per work, with format, ISBN, publisher, page count
 - **Library scan** — Walk `/books/` and reconcile existing files with wanted books in the database
@@ -64,7 +67,14 @@
 - **OpenLibrary** (primary) — Authors, books, editions, covers, ISBN lookup
 - **Google Books** (enricher) — Richer descriptions and ratings
 - **Hardcover.app** (enricher) — Community ratings and series data via GraphQL
+- **Audnex** *(development)* — Audiobook narrator, duration, cover, and description by Audible ASIN via the free [api.audnex.us](https://api.audnex.us) wrapper. Trigger with `POST /api/v1/book/{id}/enrich-audiobook`.
 - No Goodreads scraping. All sources use documented, stable public APIs.
+
+### Migration *(development)*
+- **CSV import** — Upload a newline-separated list of author names (or a `name,monitored,searchOnAdd` CSV); each name is resolved against OpenLibrary.
+- **Readarr import** — Upload `readarr.db` directly. Authors are re-resolved via OpenLibrary (Goodreads IDs aren't portable since `bookinfo.club` is dead); Indexers, download clients, and blocklist entries port structurally. Run a library scan afterward to match existing files.
+- **CLI** — `bindery migrate csv <path>` and `bindery migrate readarr <path>` for first-time bulk imports without opening the UI.
+- **UI** — Settings → Import tab with file upload + per-section result summary.
 
 ### Operations
 - **Webhook notifications** — Configurable HTTP callbacks for grab / import / failure events (pipe to Apprise, ntfy, Home Assistant, etc.)
@@ -75,10 +85,13 @@
 - **API key auth** — Optional `X-Api-Key` header enforcement for external integrations
 
 ### UI
-- **Modern React SPA** — Clean, dark-mode interface built with React 19 + TypeScript + Tailwind
-- **Mobile-friendly** — Responsive layout with hamburger nav, card views for History/Blocklist, agenda view for Calendar
+- **Light and dark themes** — iOS-style slider toggle in Settings → General → Appearance. First-load default respects the browser's `prefers-color-scheme`; preference persists to localStorage.
+- **Modern React SPA** — React 19 + TypeScript + Tailwind CSS 3, built with Vite.
+- **Detail pages** *(development)* — Routed `/book/:id` and `/author/:id` pages replace the previous modal flow. Deep-linkable, back-button friendly, hold per-book history inline.
+- **Grid / Table view toggle** *(development)* — Switch between poster-grid and dense-table views on the Books and Authors pages; choice persists per page.
+- **Mobile-friendly** — Responsive layout with hamburger nav, card views for History/Blocklist, agenda view for Calendar. Table views hide less-critical columns on narrow viewports.
 - **Pagination everywhere** — First/Prev/Next/Last + page numbers + configurable page size on all list pages
-- **Search, filter, sort** — On Authors, Books, Wanted, and History pages
+- **Search, filter, sort** — On Authors, Books, Wanted, and History pages; Books filter chips include `Type: Ebook / Audiobook`.
 - **Calendar view** — Upcoming book releases from monitored authors, with compact dot-indicator grid on mobile
 - **Full REST API** — Every feature accessible via HTTP for scripting and integration
 
@@ -101,6 +114,8 @@ docker run -d \
   -v /path/to/downloads:/downloads \
   ghcr.io/vavallee/bindery:latest
 ```
+
+**Tracks:** `:latest` = most recent tagged release, `:vX.Y.Z` = specific release, `:development` = bleeding edge (includes audiobook support and the Readarr importer). `:sha-<hash>` / `:dev-<hash>` tags also published per commit for pinning.
 
 ### Docker Compose
 
@@ -164,7 +179,8 @@ Bindery is configured through the web UI. Key screens under **Settings**:
 | `BINDERY_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `BINDERY_API_KEY` | _(empty)_ | Enforces `X-Api-Key` header on all `/api/v1/*` routes |
 | `BINDERY_DOWNLOAD_DIR` | `/downloads` | Where SABnzbd places completed downloads |
-| `BINDERY_LIBRARY_DIR` | `/books` | Destination for imported books |
+| `BINDERY_LIBRARY_DIR` | `/books` | Destination for imported ebook files |
+| `BINDERY_AUDIOBOOK_DIR` *(development)* | falls back to `BINDERY_LIBRARY_DIR` | Destination for imported audiobook folders |
 
 ## Metadata Sources
 
