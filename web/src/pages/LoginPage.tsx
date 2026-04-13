@@ -4,16 +4,24 @@ import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const { refresh } = useAuth()
   const navigate = useNavigate()
 
-  const submit = async (e: FormEvent) => {
+  // Read values from the form at submit time instead of React state.
+  // Browser autofill sets input.value directly without firing onChange, which
+  // would leave a controlled-component state empty and silently block submit.
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    const data = new FormData(e.currentTarget)
+    const username = String(data.get('username') || '').trim()
+    const password = String(data.get('password') || '')
+    const rememberMe = data.get('rememberMe') === 'on'
+    if (!username || !password) {
+      setError('Username and password are required')
+      return
+    }
     setError('')
     setSubmitting(true)
     try {
@@ -34,27 +42,29 @@ export default function LoginPage() {
         <Field label="Username">
           <input
             type="text"
+            name="username"
+            id="username"
             autoComplete="username"
             autoFocus
-            value={username}
-            onChange={e => setUsername(e.target.value)}
+            required
             className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </Field>
         <Field label="Password">
           <input
             type="password"
+            name="password"
+            id="password"
             autoComplete="current-password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
+            required
             className="w-full bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </Field>
         <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-zinc-400">
           <input
             type="checkbox"
-            checked={rememberMe}
-            onChange={e => setRememberMe(e.target.checked)}
+            name="rememberMe"
+            defaultChecked
             className="rounded"
           />
           Remember me on this device for 30 days
@@ -64,7 +74,7 @@ export default function LoginPage() {
         )}
         <button
           type="submit"
-          disabled={submitting || !username || !password}
+          disabled={submitting}
           className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-md py-2 text-sm transition-colors"
         >
           {submitting ? 'Signing in…' : 'Sign in'}

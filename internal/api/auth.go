@@ -155,15 +155,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "lookup: "+err.Error())
 		return
 	}
-	if u == nil {
+	if u == nil || !auth.VerifyPassword(req.Password, u.PasswordHash) {
 		h.limiter.Record(ip)
-		slog.Warn("login failed: unknown user", "username", req.Username, "ip", ip)
-		writeErr(w, http.StatusUnauthorized, "invalid credentials")
-		return
-	}
-	if !auth.VerifyPassword(req.Password, u.PasswordHash) {
-		h.limiter.Record(ip)
-		slog.Warn("login failed: bad password", "username", u.Username, "ip", ip, "hashLen", len(u.PasswordHash))
 		writeErr(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
