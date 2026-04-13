@@ -29,7 +29,7 @@ export default function LoginPage() {
   }
 
   return (
-    <CardShell title="Sign in" subtitle="Catalogue restricted — staff only">
+    <CardShell title="Sign in" subtitle="">
       <form onSubmit={submit} className="space-y-4">
         <Field label="Username">
           <input
@@ -83,7 +83,7 @@ export function CardShell({ title, subtitle, children }: { title: string; subtit
             <img src="/favicon.png" alt="Bindery" className="w-12 h-12 rounded-full" />
             <h1 className="text-2xl font-bold tracking-tight">Bindery</h1>
           </div>
-          <div className="text-xs text-slate-500 dark:text-zinc-500 mt-2">{subtitle}</div>
+          {subtitle && <div className="text-xs text-slate-500 dark:text-zinc-500 mt-2">{subtitle}</div>}
         </div>
         <div className="border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 rounded-lg p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-4">{title}</h2>
