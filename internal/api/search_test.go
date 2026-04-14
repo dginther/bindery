@@ -14,12 +14,12 @@ import (
 
 // stubProvider implements metadata.Provider for search handler tests.
 type stubProvider struct {
-	authors      []models.Author
-	authorsErr   error
-	books        []models.Book
-	booksErr     error
-	byISBN       *models.Book
-	byISBNErr    error
+	authors    []models.Author
+	authorsErr error
+	books      []models.Book
+	booksErr   error
+	byISBN     *models.Book
+	byISBNErr  error
 }
 
 func (s *stubProvider) Name() string { return "stub" }
