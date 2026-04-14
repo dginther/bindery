@@ -15,26 +15,39 @@ type DownloadClientRepo struct {
 	db *sql.DB
 }
 
-func NewDownloadClientRepo(db *sql.DB) *DownloadClientRepo {
-	return &DownloadClientRepo{db: db}
+func isCredentialClient(clientType string) bool {
+	return clientType == "qbittorrent" || clientType == "transmission"
 }
 
-// populateVirtualCredentials maps the storage columns to the virtual Username/Password
-// fields for qBittorrent clients (which store credentials in url_base and api_key).
-func populateVirtualCredentials(c *models.DownloadClient) {
-	if c.Type == "qbittorrent" {
+func hydrateClientCredentials(c *models.DownloadClient) {
+	if isCredentialClient(c.Type) {
+		// Username/Password are virtual fields persisted in url_base/api_key.
 		c.Username = c.URLBase
 		c.Password = c.APIKey
+		return
+	}
+	// Non-credential clients should not project api_key/url_base as credentials.
+	c.Username = ""
+	c.Password = ""
+}
+
+func normalizeClientCredentialStorage(c *models.DownloadClient) {
+	if !isCredentialClient(c.Type) {
+		return
+	}
+	// For credential-based clients, callers may send username/password. Keep
+	// DB storage backward-compatible by writing into url_base/api_key, but do
+	// not clobber existing values with blanks.
+	if c.Username != "" {
+		c.URLBase = c.Username
+	}
+	if c.Password != "" {
+		c.APIKey = c.Password
 	}
 }
 
-// applyVirtualCredentials maps the virtual Username/Password fields back to the
-// storage columns for qBittorrent clients before writing to the database.
-func applyVirtualCredentials(c *models.DownloadClient) {
-	if c.Type == "qbittorrent" {
-		c.URLBase = c.Username
-		c.APIKey = c.Password
-	}
+func NewDownloadClientRepo(db *sql.DB) *DownloadClientRepo {
+	return &DownloadClientRepo{db: db}
 }
 
 func (r *DownloadClientRepo) List(ctx context.Context) ([]models.DownloadClient, error) {
@@ -56,7 +69,7 @@ func (r *DownloadClientRepo) List(ctx context.Context) ([]models.DownloadClient,
 		}
 		c.Enabled = enabled == 1
 		c.UseSSL = useSSL == 1
-		populateVirtualCredentials(&c)
+		hydrateClientCredentials(&c)
 		clients = append(clients, c)
 	}
 	return clients, rows.Err()
@@ -78,7 +91,7 @@ func (r *DownloadClientRepo) GetByID(ctx context.Context, id int64) (*models.Dow
 	}
 	c.Enabled = enabled == 1
 	c.UseSSL = useSSL == 1
-	populateVirtualCredentials(&c)
+	hydrateClientCredentials(&c)
 	return &c, nil
 }
 
@@ -98,7 +111,7 @@ func (r *DownloadClientRepo) GetFirstEnabled(ctx context.Context) (*models.Downl
 	}
 	c.Enabled = enabled == 1
 	c.UseSSL = useSSL == 1
-	populateVirtualCredentials(&c)
+	hydrateClientCredentials(&c)
 	return &c, nil
 }
 
@@ -106,18 +119,23 @@ func (r *DownloadClientRepo) GetFirstEnabled(ctx context.Context) (*models.Downl
 // matches the given protocol ("usenet" → sabnzbd, "torrent" → qbittorrent).
 // Falls back to the first enabled client of any type if no match is found.
 func (r *DownloadClientRepo) GetFirstEnabledByProtocol(ctx context.Context, protocol string) (*models.DownloadClient, error) {
-	clientType := "sabnzbd"
-	if protocol == "torrent" {
-		clientType = "qbittorrent"
-	}
-
 	var c models.DownloadClient
 	var enabled, useSSL int
-	err := r.db.QueryRowContext(ctx, `
+	query := `
 		SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
-		FROM download_clients WHERE enabled=1 AND type=? ORDER BY priority LIMIT 1`, clientType).
-		Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
-			&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt)
+		FROM download_clients WHERE enabled=1 AND type=? ORDER BY priority LIMIT 1`
+	var err error
+	if protocol == "torrent" {
+		err = r.db.QueryRowContext(ctx, `
+			SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+			FROM download_clients WHERE enabled=1 AND type IN (?, ?) ORDER BY priority LIMIT 1`, "qbittorrent", "transmission").
+			Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
+				&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt)
+	} else {
+		err = r.db.QueryRowContext(ctx, query, "sabnzbd").
+			Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
+				&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt)
+	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -127,7 +145,7 @@ func (r *DownloadClientRepo) GetFirstEnabledByProtocol(ctx context.Context, prot
 	}
 	c.Enabled = enabled == 1
 	c.UseSSL = useSSL == 1
-	populateVirtualCredentials(&c)
+	hydrateClientCredentials(&c)
 	return &c, nil
 }
 
@@ -135,13 +153,19 @@ func (r *DownloadClientRepo) GetFirstEnabledByProtocol(ctx context.Context, prot
 // ordered by priority. Used when multiple clients of the same type exist and
 // the caller needs to pick the best one by category.
 func (r *DownloadClientRepo) GetEnabledByProtocol(ctx context.Context, protocol string) ([]models.DownloadClient, error) {
-	clientType := "sabnzbd"
+	var (
+		rows *sql.Rows
+		err  error
+	)
 	if protocol == "torrent" {
-		clientType = "qbittorrent"
+		rows, err = r.db.QueryContext(ctx, `
+			SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+			FROM download_clients WHERE enabled=1 AND type IN (?, ?) ORDER BY priority`, "qbittorrent", "transmission")
+	} else {
+		rows, err = r.db.QueryContext(ctx, `
+			SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+			FROM download_clients WHERE enabled=1 AND type=? ORDER BY priority`, "sabnzbd")
 	}
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
-		FROM download_clients WHERE enabled=1 AND type=? ORDER BY priority`, clientType)
 	if err != nil {
 		return nil, err
 	}
@@ -157,14 +181,14 @@ func (r *DownloadClientRepo) GetEnabledByProtocol(ctx context.Context, protocol 
 		}
 		c.Enabled = enabled == 1
 		c.UseSSL = useSSL == 1
-		populateVirtualCredentials(&c)
+		hydrateClientCredentials(&c)
 		clients = append(clients, c)
 	}
 	return clients, rows.Err()
 }
 
 func (r *DownloadClientRepo) Create(ctx context.Context, c *models.DownloadClient) error {
-	applyVirtualCredentials(c)
+	normalizeClientCredentialStorage(c)
 	now := time.Now().UTC()
 	result, err := r.db.ExecContext(ctx, `
 		INSERT INTO download_clients (name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at)
@@ -181,7 +205,7 @@ func (r *DownloadClientRepo) Create(ctx context.Context, c *models.DownloadClien
 }
 
 func (r *DownloadClientRepo) Update(ctx context.Context, c *models.DownloadClient) error {
-	applyVirtualCredentials(c)
+	normalizeClientCredentialStorage(c)
 	now := time.Now().UTC()
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE download_clients SET name=?, type=?, host=?, port=?, api_key=?, use_ssl=?,

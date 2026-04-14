@@ -16,7 +16,9 @@ import (
 
 	"github.com/vavallee/bindery/internal/calibre"
 	"github.com/vavallee/bindery/internal/db"
+	"github.com/vavallee/bindery/internal/downloader/qbittorrent"
 	"github.com/vavallee/bindery/internal/downloader/sabnzbd"
+	"github.com/vavallee/bindery/internal/downloader/transmission"
 	"github.com/vavallee/bindery/internal/models"
 )
 
@@ -189,6 +191,38 @@ func (s *Scanner) CheckDownloads(ctx context.Context) {
 		return
 	}
 
+	if client.Type == "transmission" {
+		s.checkTransmissionDownloads(ctx, client)
+	} else if client.Type == "qbittorrent" {
+		s.checkQbittorrentDownloads(ctx, client)
+	} else {
+		s.checkSABnzbdDownloads(ctx, client)
+	}
+}
+
+func isTrackedTorrentDownloadForClient(dl models.Download, clientID int64) bool {
+	if dl.DownloadClientID == nil || *dl.DownloadClientID != clientID {
+		return false
+	}
+	if dl.TorrentID == nil {
+		return false
+	}
+	return dl.Status != models.DownloadStatusImported && dl.Status != models.DownloadStatusFailed
+}
+
+func (s *Scanner) markDownloadFailed(ctx context.Context, dl *models.Download, message string) {
+	s.downloads.SetError(ctx, dl.ID, message)
+	eventData, _ := json.Marshal(map[string]string{"guid": dl.GUID, "message": message})
+	s.history.Create(ctx, &models.HistoryEvent{
+		BookID:      dl.BookID,
+		EventType:   models.HistoryEventDownloadFailed,
+		SourceTitle: dl.Title,
+		Data:        string(eventData),
+	})
+}
+
+// checkSABnzbdDownloads polls SABnzbd for status changes.
+func (s *Scanner) checkSABnzbdDownloads(ctx context.Context, client *models.DownloadClient) {
 	sab := sabnzbd.New(client.Host, client.Port, client.APIKey, client.UseSSL)
 
 	// Check history for completed downloads (no category filter — match by NZO ID)
@@ -213,7 +247,7 @@ func (s *Scanner) CheckDownloads(ctx context.Context) {
 				}
 				slog.Info("download completed", "title", dl.Title, "path", localPath)
 				s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusCompleted)
-				s.tryImport(ctx, sab, dl, slot.NzoID, localPath)
+				s.tryImportSABnzbd(ctx, sab, dl, slot.NzoID, localPath)
 			}
 		case "Failed":
 			if dl.Status != models.DownloadStatusFailed {
@@ -231,10 +265,120 @@ func (s *Scanner) CheckDownloads(ctx context.Context) {
 	}
 }
 
-// tryImport attempts to import a completed download into the library.
+// checkTransmissionDownloads polls Transmission for status changes.
+func (s *Scanner) checkTransmissionDownloads(ctx context.Context, client *models.DownloadClient) {
+	trans := transmission.New(client.Host, client.Port, client.Username, client.Password, client.UseSSL)
+
+	// Get all torrents
+	torrents, err := trans.GetTorrents(ctx, "")
+	if err != nil {
+		slog.Debug("failed to fetch Transmission torrents", "error", err)
+		return
+	}
+
+	// Get all active downloads from DB (not yet completed/imported)
+	allDownloads, _ := s.downloads.List(ctx)
+	torrentsMap := make(map[string]transmission.Torrent)
+	for _, t := range torrents {
+		torrentsMap[fmt.Sprintf("%d", t.ID)] = t
+	}
+
+	for _, dl := range allDownloads {
+		if !isTrackedTorrentDownloadForClient(dl, client.ID) {
+			continue
+		}
+
+		torrent, ok := torrentsMap[*dl.TorrentID]
+		if !ok {
+			continue
+		}
+
+		// Status codes: 0=stopped, 1=checking, 2=downloading, 3=seeding, 4=allocating, 5=checking, 6=stopped
+		isComplete := torrent.Status == 3 || (torrent.PercentDone >= 1.0)
+		isStopped := torrent.Status == 0 || torrent.Status == 6
+
+		if isComplete && (dl.Status == models.DownloadStatusDownloading || dl.Status == models.DownloadStatusQueued) {
+			// Download is complete
+			slog.Info("download completed", "title", dl.Title, "path", torrent.DownloadDir)
+			s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusCompleted)
+			s.tryImportTransmission(ctx, &dl, torrent.DownloadDir)
+		} else if isStopped && !isComplete && dl.Status != models.DownloadStatusFailed {
+			// Download was stopped before completion
+			slog.Warn("download stopped/failed", "title", dl.Title)
+			s.markDownloadFailed(ctx, &dl, "Torrent stopped before completion")
+		}
+	}
+}
+
+// checkQbittorrentDownloads polls qBittorrent for status changes.
+func (s *Scanner) checkQbittorrentDownloads(ctx context.Context, client *models.DownloadClient) {
+	qb := qbittorrent.New(client.Host, client.Port, client.Username, client.Password, client.UseSSL)
+
+	torrents, err := qb.GetTorrents(ctx, client.Category)
+	if err != nil {
+		slog.Debug("failed to fetch qBittorrent torrents", "error", err)
+		return
+	}
+
+	allDownloads, _ := s.downloads.List(ctx)
+	torrentsMap := make(map[string]qbittorrent.Torrent)
+	for _, t := range torrents {
+		torrentsMap[strings.ToLower(t.Hash)] = t
+	}
+
+	for _, dl := range allDownloads {
+		if !isTrackedTorrentDownloadForClient(dl, client.ID) {
+			continue
+		}
+
+		torrent, ok := torrentsMap[strings.ToLower(*dl.TorrentID)]
+		if !ok {
+			continue
+		}
+
+		state := strings.ToLower(torrent.State)
+		isComplete := torrent.Progress >= 1.0 || strings.Contains(state, "upload") || strings.Contains(state, "stalledup") || strings.Contains(state, "checkingup")
+		isFailed := strings.Contains(state, "error")
+
+		if isComplete && (dl.Status == models.DownloadStatusDownloading || dl.Status == models.DownloadStatusQueued) {
+			downloadPath := torrent.SavePath
+			candidate := filepath.Join(torrent.SavePath, torrent.Name)
+			if _, err := os.Stat(candidate); err == nil {
+				downloadPath = candidate
+			}
+			downloadPath = s.remapper.Apply(downloadPath)
+
+			slog.Info("download completed", "title", dl.Title, "path", downloadPath)
+			s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusCompleted)
+			s.tryImportQbittorrent(ctx, &dl, downloadPath)
+		} else if isFailed && dl.Status != models.DownloadStatusFailed {
+			slog.Warn("download failed", "title", dl.Title, "state", torrent.State)
+			s.markDownloadFailed(ctx, &dl, "Torrent failed in qBittorrent")
+		}
+	}
+}
+
+// tryImportSABnzbd attempts to import a completed SABnzbd download into the library.
 // sab is used to clear the SABnzbd history entry once bindery has taken
 // ownership of the files; nzoID is the history slot's NZO identifier.
-func (s *Scanner) tryImport(ctx context.Context, sab *sabnzbd.Client, dl *models.Download, nzoID, downloadPath string) {
+func (s *Scanner) tryImportSABnzbd(ctx context.Context, sab *sabnzbd.Client, dl *models.Download, nzoID, downloadPath string) {
+	s.tryImportInternal(ctx, dl, downloadPath, func() error {
+		// Clean up SABnzbd history
+		return sab.DeleteHistory(ctx, nzoID, false)
+	})
+}
+
+// tryImportTransmission attempts to import a completed Transmission download into the library.
+func (s *Scanner) tryImportTransmission(ctx context.Context, dl *models.Download, downloadPath string) {
+	s.tryImportInternal(ctx, dl, downloadPath, nil)
+}
+
+func (s *Scanner) tryImportQbittorrent(ctx context.Context, dl *models.Download, downloadPath string) {
+	s.tryImportInternal(ctx, dl, downloadPath, nil)
+}
+
+// tryImportInternal is the common import logic shared by SABnzbd and Transmission.
+func (s *Scanner) tryImportInternal(ctx context.Context, dl *models.Download, downloadPath string, cleanupFunc func() error) {
 	if s.libraryDir == "" {
 		slog.Warn("no library directory configured, skipping import")
 		return
@@ -257,7 +401,7 @@ func (s *Scanner) tryImport(ctx context.Context, sab *sabnzbd.Client, dl *models
 		return
 	}
 
-	// Resolve the book and author for naming. Lookup errors are not fatal —
+	// Resolve the book and author for naming. Lookup errors are not fatal -
 	// we fall through to the "unmatched import" log below.
 	var book *models.Book
 	var author *models.Author
@@ -311,7 +455,11 @@ func (s *Scanner) tryImport(ctx context.Context, sab *sabnzbd.Client, dl *models
 			SourceTitle: dl.Title,
 			Data:        string(eventData),
 		})
-		s.clearSABHistory(ctx, sab, nzoID)
+		if cleanupFunc != nil {
+			if err := cleanupFunc(); err != nil {
+				slog.Warn("cleanup failed", "error", err)
+			}
+		}
 		return
 	}
 
@@ -350,7 +498,7 @@ func (s *Scanner) tryImport(ctx context.Context, sab *sabnzbd.Client, dl *models
 		})
 	}
 
-	// A clean run leaves the SABnzbd job folder holding only non-book
+	// A clean run leaves the download folder holding only non-book
 	// byproducts (par2, nfo, sfv, sample) — bindery has no further use
 	// for them, so drop the folder and the matching history entry so
 	// the completed-downloads view doesn't accumulate stale rows.
@@ -358,20 +506,11 @@ func (s *Scanner) tryImport(ctx context.Context, sab *sabnzbd.Client, dl *models
 		if err := os.RemoveAll(downloadPath); err != nil {
 			slog.Warn("failed to remove download folder after import", "path", downloadPath, "error", err)
 		}
-		s.clearSABHistory(ctx, sab, nzoID)
-	}
-}
-
-// clearSABHistory tells SABnzbd to drop the history entry for a job bindery
-// has finished importing. deleteFiles=false because the importer has already
-// moved the contents; asking SAB to delete would either no-op or wipe files
-// that were moved cross-filesystem and are still resolving.
-func (s *Scanner) clearSABHistory(ctx context.Context, sab *sabnzbd.Client, nzoID string) {
-	if sab == nil || nzoID == "" {
-		return
-	}
-	if err := sab.DeleteHistory(ctx, nzoID, false); err != nil {
-		slog.Warn("failed to delete SABnzbd history entry", "nzoID", nzoID, "error", err)
+		if cleanupFunc != nil {
+			if err := cleanupFunc(); err != nil {
+				slog.Warn("cleanup failed", "error", err)
+			}
+		}
 	}
 }
 

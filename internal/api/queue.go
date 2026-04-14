@@ -10,8 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/vavallee/bindery/internal/db"
-	"github.com/vavallee/bindery/internal/downloader/qbittorrent"
-	"github.com/vavallee/bindery/internal/downloader/sabnzbd"
+	"github.com/vavallee/bindery/internal/downloader"
 	"github.com/vavallee/bindery/internal/indexer"
 	"github.com/vavallee/bindery/internal/models"
 )
@@ -27,7 +26,7 @@ func NewQueueHandler(downloads *db.DownloadRepo, clients *db.DownloadClientRepo,
 	return &QueueHandler{downloads: downloads, clients: clients, books: books, history: history}
 }
 
-// QueueItem combines local download record with live SABnzbd status.
+// QueueItem combines local download record with live downloader status.
 type QueueItem struct {
 	models.Download
 	Percentage string `json:"percentage,omitempty"`
@@ -42,27 +41,32 @@ func (h *QueueHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Overlay live SABnzbd status
 	items := make([]QueueItem, len(downloads))
 	for i, d := range downloads {
 		items[i] = QueueItem{Download: d}
 	}
 
-	client, err := h.clients.GetFirstEnabledByProtocol(r.Context(), "usenet")
-	if err == nil && client != nil && client.Type == "sabnzbd" {
-		sab := sabnzbd.New(client.Host, client.Port, client.APIKey, client.UseSSL)
-		queue, err := sab.GetQueue(r.Context())
+	client, err := h.clients.GetFirstEnabled(r.Context())
+	if err == nil && client != nil {
+		statusByID, usesTorrentID, err := downloader.GetLiveStatuses(r.Context(), client)
 		if err == nil {
-			slotMap := make(map[string]sabnzbd.QueueSlot)
-			for _, slot := range queue.Slots {
-				slotMap[slot.NzoID] = slot
-			}
 			for i, item := range items {
-				if item.SABnzbdNzoID != nil {
-					if slot, ok := slotMap[*item.SABnzbdNzoID]; ok {
-						items[i].Percentage = slot.Percentage
-						items[i].TimeLeft = slot.TimeLeft
+				var remoteID string
+				if usesTorrentID {
+					if item.TorrentID == nil {
+						continue
 					}
+					remoteID = *item.TorrentID
+				} else {
+					if item.SABnzbdNzoID == nil {
+						continue
+					}
+					remoteID = *item.SABnzbdNzoID
+				}
+				if status, ok := statusByID[remoteID]; ok {
+					items[i].Percentage = status.Percentage
+					items[i].TimeLeft = status.TimeLeft
+					items[i].Speed = status.Speed
 				}
 			}
 		}
@@ -94,21 +98,19 @@ func (h *QueueHandler) Grab(w http.ResponseWriter, r *http.Request) {
 		req.Protocol = "usenet"
 	}
 
-	// Check for duplicate
 	existing, _ := h.downloads.GetByGUID(r.Context(), req.GUID)
 	if existing != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "already grabbed"})
 		return
 	}
 
-	// Select download client by protocol, preferring one that matches the media type
 	client, err := h.selectClient(r.Context(), req.Protocol, req.MediaType)
 	if err != nil || client == nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no enabled download client configured"})
 		return
 	}
 
-	// Create download record
+	protocol := downloader.ProtocolForClient(client.Type)
 	dl := &models.Download{
 		GUID:             req.GUID,
 		BookID:           req.BookID,
@@ -118,7 +120,7 @@ func (h *QueueHandler) Grab(w http.ResponseWriter, r *http.Request) {
 		NZBURL:           req.NZBURL,
 		Size:             req.Size,
 		Status:           models.DownloadStatusQueued,
-		Protocol:         req.Protocol,
+		Protocol:         protocol,
 		Quality:          indexer.ParseRelease(req.Title).Format,
 	}
 	if err := h.downloads.Create(r.Context(), dl); err != nil {
@@ -126,38 +128,26 @@ func (h *QueueHandler) Grab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Dispatch to the appropriate download client
-	if req.Protocol == "torrent" {
-		qbt := qbittorrent.New(client.Host, client.Port, client.URLBase, client.APIKey, client.UseSSL)
-		if err := qbt.AddTorrent(r.Context(), req.NZBURL, client.Category, ""); err != nil {
-			slog.Error("failed to send to qBittorrent", "error", err, "title", req.Title)
-			h.downloads.SetError(r.Context(), dl.ID, err.Error())
-			h.recordHistory(r.Context(), models.HistoryEventDownloadFailed, req.Title, req.BookID, map[string]interface{}{"guid": req.GUID, "message": err.Error()})
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to send to qBittorrent: " + err.Error()})
-			return
-		}
-		h.downloads.UpdateStatus(r.Context(), dl.ID, models.DownloadStatusDownloading)
-		dl.Status = models.DownloadStatusDownloading
-		slog.Info("download sent to qBittorrent", "title", req.Title)
-	} else {
-		sab := sabnzbd.New(client.Host, client.Port, client.APIKey, client.UseSSL)
-		resp, err := sab.AddURL(r.Context(), req.NZBURL, req.Title, client.Category, 0)
-		if err != nil {
-			slog.Error("failed to send to sabnzbd", "error", err, "title", req.Title)
-			h.downloads.SetError(r.Context(), dl.ID, err.Error())
-			h.recordHistory(r.Context(), models.HistoryEventDownloadFailed, req.Title, req.BookID, map[string]interface{}{"guid": req.GUID, "message": err.Error()})
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to send to SABnzbd: " + err.Error()})
-			return
-		}
-		if len(resp.NzoIDs) > 0 {
-			nzoID := resp.NzoIDs[0]
-			h.downloads.SetNzoID(r.Context(), dl.ID, nzoID)
-			dl.SABnzbdNzoID = &nzoID
-		}
-		h.downloads.UpdateStatus(r.Context(), dl.ID, models.DownloadStatusDownloading)
-		dl.Status = models.DownloadStatusDownloading
-		slog.Info("download grabbed", "title", req.Title, "nzoId", dl.SABnzbdNzoID)
+	sendRes, err := downloader.SendDownload(r.Context(), client, req.NZBURL, req.Title)
+	if err != nil {
+		slog.Error("failed to send download", "client_type", client.Type, "error", err, "title", req.Title)
+		h.downloads.SetError(r.Context(), dl.ID, err.Error())
+		h.recordHistory(r.Context(), models.HistoryEventDownloadFailed, req.Title, req.BookID, map[string]interface{}{"guid": req.GUID, "message": err.Error()})
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to send to downloader: " + err.Error()})
+		return
 	}
+
+	if remoteID := sendRes.RemoteID; remoteID != "" {
+		if sendRes.UsesTorrentID {
+			h.downloads.SetTorrentID(r.Context(), dl.ID, remoteID)
+			dl.TorrentID = &remoteID
+		} else {
+			h.downloads.SetNzoID(r.Context(), dl.ID, remoteID)
+			dl.SABnzbdNzoID = &remoteID
+		}
+	}
+	h.downloads.UpdateStatus(r.Context(), dl.ID, models.DownloadStatusDownloading)
+	dl.Status = models.DownloadStatusDownloading
 
 	h.recordHistory(r.Context(), models.HistoryEventGrabbed, req.Title, req.BookID, map[string]interface{}{
 		"guid":      req.GUID,
@@ -165,6 +155,7 @@ func (h *QueueHandler) Grab(w http.ResponseWriter, r *http.Request) {
 		"indexerId": req.IndexerID,
 	})
 
+	slog.Info("download grabbed", "title", req.Title, "client", client.Type)
 	writeJSON(w, http.StatusAccepted, dl)
 }
 
@@ -215,19 +206,13 @@ func (h *QueueHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove from the appropriate download client
-	if target.Protocol == "torrent" {
-		// qBittorrent: we don't store a per-download torrent hash yet, so just
-		// remove the local record. Future work: store hash in Download and call qbt.DeleteTorrent.
-	} else if target.SABnzbdNzoID != nil {
-		client, err := h.clients.GetFirstEnabledByProtocol(r.Context(), "usenet")
+	if target.DownloadClientID != nil {
+		client, err := h.clients.GetByID(r.Context(), *target.DownloadClientID)
 		if err == nil && client != nil {
-			sab := sabnzbd.New(client.Host, client.Port, client.APIKey, client.UseSSL)
-			_ = sab.Delete(r.Context(), *target.SABnzbdNzoID, true)
+			_ = downloader.RemoveDownload(r.Context(), client, target, true)
 		}
 	}
 
-	// Reset book status back to wanted so it reappears on the Wanted page
 	if target.BookID != nil {
 		book, _ := h.books.GetByID(r.Context(), *target.BookID)
 		if book != nil && (book.Status == models.BookStatusDownloading || book.Status == models.BookStatusDownloaded) {

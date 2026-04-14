@@ -247,9 +247,8 @@ func importReadarrDownloadClients(ctx context.Context, src *sql.DB, repo *db.Dow
 			cat = "books"
 		}
 
-		// For qBittorrent, Readarr's Username/Password fields carry creds;
-		// Bindery squashes credentials into the APIKey field for either
-		// client so we don't need a separate Password column.
+		// Credential-based clients (qBittorrent/Transmission) store username in
+		// url_base and password in api_key for backward-compatible schema reuse.
 		apiKey := s.APIKey
 		if apiKey == "" {
 			apiKey = s.Password
@@ -261,6 +260,7 @@ func importReadarrDownloadClients(ctx context.Context, src *sql.DB, repo *db.Dow
 			Host:     s.Host,
 			Port:     s.Port,
 			APIKey:   apiKey,
+			URLBase:  s.Username,
 			Category: cat,
 			UseSSL:   s.UseSsl,
 			Enabled:  enable,

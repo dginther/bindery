@@ -10,8 +10,7 @@ import (
 	"github.com/robfig/cron/v3"
 
 	"github.com/vavallee/bindery/internal/db"
-	"github.com/vavallee/bindery/internal/downloader/qbittorrent"
-	"github.com/vavallee/bindery/internal/downloader/sabnzbd"
+	"github.com/vavallee/bindery/internal/downloader"
 	"github.com/vavallee/bindery/internal/importer"
 	"github.com/vavallee/bindery/internal/indexer"
 	"github.com/vavallee/bindery/internal/indexer/newznab"
@@ -235,29 +234,21 @@ func (s *Scheduler) searchAndGrabFormat(ctx context.Context, book models.Book, m
 		return
 	}
 
-	if best.Protocol == "torrent" {
-		qbt := qbittorrent.New(client.Host, client.Port, client.URLBase, client.APIKey, client.UseSSL)
-		if err := qbt.AddTorrent(ctx, best.NZBURL, client.Category, ""); err != nil {
-			slog.Error("SearchAndGrabBook: failed to send to qBittorrent", "title", best.Title, "error", err)
-			s.downloads.SetError(ctx, dl.ID, err.Error())
-			return
-		}
-		s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusDownloading)
-		slog.Info("sent to qBittorrent", "title", best.Title)
-	} else {
-		sab := sabnzbd.New(client.Host, client.Port, client.APIKey, client.UseSSL)
-		resp, err := sab.AddURL(ctx, best.NZBURL, best.Title, client.Category, 0)
-		if err != nil {
-			slog.Error("SearchAndGrabBook: failed to send to SABnzbd", "title", best.Title, "error", err)
-			s.downloads.SetError(ctx, dl.ID, err.Error())
-			return
-		}
-		if len(resp.NzoIDs) > 0 {
-			s.downloads.SetNzoID(ctx, dl.ID, resp.NzoIDs[0])
-		}
-		s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusDownloading)
-		slog.Info("sent to SABnzbd", "title", best.Title)
+	sendRes, err := downloader.SendDownload(ctx, client, best.NZBURL, best.Title)
+	if err != nil {
+		slog.Error("SearchAndGrabBook: failed to send to downloader", "client", client.Type, "title", best.Title, "error", err)
+		s.downloads.SetError(ctx, dl.ID, err.Error())
+		return
 	}
+	if sendRes.RemoteID != "" {
+		if sendRes.UsesTorrentID {
+			s.downloads.SetTorrentID(ctx, dl.ID, sendRes.RemoteID)
+		} else {
+			s.downloads.SetNzoID(ctx, dl.ID, sendRes.RemoteID)
+		}
+	}
+	s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusDownloading)
+	slog.Info("sent to downloader", "client", client.Type, "title", best.Title)
 }
 
 func (s *Scheduler) searchWanted() {

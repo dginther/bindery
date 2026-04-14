@@ -38,6 +38,7 @@ type Download struct {
 	NZBURL           string     `json:"nzbUrl"`
 	Size             int64      `json:"size"`
 	SABnzbdNzoID     *string    `json:"sabnzbdNzoId"`
+	TorrentID        *string    `json:"torrentId"`
 	Status           string     `json:"status"`
 	Protocol         string     `json:"protocol"`
 	Quality          string     `json:"quality"`
