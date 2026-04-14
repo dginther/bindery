@@ -196,11 +196,10 @@ func (r *DownloadClientRepo) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
-// pickClientForMediaType selects the best client from a list by preferring
-// one whose category hints match the media type. For audiobooks, prefer a client
-// with "audio" in the category name; for ebooks, prefer one without "audio".
-// Falls back to the first (highest-priority) client if no preference matches.
-func pickClientForMediaType(clients []models.DownloadClient, mediaType string) *models.DownloadClient {
+// PickClientForMediaType selects the best client from a list for the given
+// media type. Audiobooks prefer a client whose category contains "audio";
+// other types prefer one without. Falls back to the first client.
+func PickClientForMediaType(clients []models.DownloadClient, mediaType string) *models.DownloadClient {
 	if len(clients) == 0 {
 		return nil
 	}

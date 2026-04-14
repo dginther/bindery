@@ -274,6 +274,7 @@ export interface SearchResult {
   nzbUrl: string
   grabs: number
   pubDate: string
+  protocol: string  // "usenet" or "torrent"
 }
 
 export interface AddAuthorRequest {
@@ -293,6 +294,8 @@ export interface GrabRequest {
   size: number
   bookId?: number
   indexerId?: number
+  protocol?: string
+  mediaType?: string
 }
 
 export interface HistoryEvent {

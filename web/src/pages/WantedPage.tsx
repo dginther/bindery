@@ -48,7 +48,7 @@ export default function WantedPage() {
     }
   }
 
-  const grab = async (result: SearchResult, bookId: number) => {
+  const grab = async (result: SearchResult, book: Book) => {
     setGrabbingGuid(result.guid)
     try {
       await api.grab({
@@ -56,7 +56,9 @@ export default function WantedPage() {
         title: result.title,
         nzbUrl: result.nzbUrl,
         size: result.size,
-        bookId,
+        bookId: book.id,
+        protocol: result.protocol,
+        mediaType: book.mediaType,
       })
       setGrabbedGuid(result.guid)
       setTimeout(() => {
@@ -157,7 +159,7 @@ export default function WantedPage() {
                         <span className="text-slate-600 dark:text-zinc-500 truncate block">{r.indexerName} &middot; {formatSize(r.size)} &middot; {r.grabs} grabs</span>
                       </div>
                       <button
-                        onClick={() => grab(r, book.id)}
+                        onClick={() => grab(r, book)}
                         disabled={grabbingGuid === r.guid || grabbedGuid === r.guid}
                         className={`px-2 py-2 rounded text-[10px] font-medium flex-shrink-0 touch-manipulation transition-colors disabled:cursor-default ${
                           grabbedGuid === r.guid
