@@ -637,11 +637,11 @@ func TestDownloadRepoCRUD(t *testing.T) {
 	repo := NewDownloadRepo(database)
 
 	dl := &models.Download{
-		GUID:    "test-guid-abc",
-		Title:   "Some.Book.epub",
-		NZBURL:  "https://example.com/dl.nzb",
-		Size:    1024,
-		Status:  models.DownloadStatusQueued,
+		GUID:     "test-guid-abc",
+		Title:    "Some.Book.epub",
+		NZBURL:   "https://example.com/dl.nzb",
+		Size:     1024,
+		Status:   models.DownloadStatusQueued,
 		Protocol: "usenet",
 	}
 	if err := repo.Create(ctx, dl); err != nil {
