@@ -421,6 +421,152 @@ func TestCascadeDeleteAuthorBooks(t *testing.T) {
 	}
 }
 
+func TestPickClientForMediaType(t *testing.T) {
+	audioClient := models.DownloadClient{ID: 1, Name: "SAB-audio", Category: "audiobooks", Type: "sabnzbd"}
+	ebookClient := models.DownloadClient{ID: 2, Name: "SAB-ebook", Category: "ebooks", Type: "sabnzbd"}
+	genericClient := models.DownloadClient{ID: 3, Name: "SAB-generic", Category: "books", Type: "sabnzbd"}
+
+	tests := []struct {
+		name      string
+		clients   []models.DownloadClient
+		mediaType string
+		wantID    int64
+	}{
+		{"empty list returns nil", nil, "ebook", 0},
+		{"single client always wins", []models.DownloadClient{ebookClient}, "audiobook", 2},
+		{"audiobook prefers audio category", []models.DownloadClient{ebookClient, audioClient}, "audiobook", 1},
+		{"ebook prefers non-audio category", []models.DownloadClient{audioClient, ebookClient}, "ebook", 2},
+		{"audiobook falls back to first when no match", []models.DownloadClient{ebookClient, genericClient}, "audiobook", 2},
+		{"ebook falls back to first when all audio", []models.DownloadClient{audioClient}, "ebook", 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PickClientForMediaType(tt.clients, tt.mediaType)
+			if tt.wantID == 0 {
+				if got != nil {
+					t.Errorf("expected nil, got client ID %d", got.ID)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("expected a client, got nil")
+			}
+			if got.ID != tt.wantID {
+				t.Errorf("expected client ID %d, got %d (%s)", tt.wantID, got.ID, got.Name)
+			}
+		})
+	}
+}
+
+func TestDownloadClientRepoVirtualCredentials(t *testing.T) {
+	database, err := OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	ctx := context.Background()
+	repo := NewDownloadClientRepo(database)
+
+	// qBittorrent: Username/Password should round-trip via url_base/api_key columns
+	qbt := &models.DownloadClient{
+		Name:     "My qBittorrent",
+		Type:     "qbittorrent",
+		Host:     "localhost",
+		Port:     8080,
+		Username: "admin",
+		Password: "secret",
+		Enabled:  true,
+	}
+	if err := repo.Create(ctx, qbt); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	got, err := repo.GetByID(ctx, qbt.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Username != "admin" {
+		t.Errorf("Username: want admin, got %q", got.Username)
+	}
+	if got.Password != "secret" {
+		t.Errorf("Password: want secret, got %q", got.Password)
+	}
+	// Raw storage columns should mirror the virtual fields
+	if got.URLBase != "admin" {
+		t.Errorf("URLBase (storage): want admin, got %q", got.URLBase)
+	}
+	if got.APIKey != "secret" {
+		t.Errorf("APIKey (storage): want secret, got %q", got.APIKey)
+	}
+
+	// sabnzbd: APIKey should survive as-is; Username/Password stay empty
+	sab := &models.DownloadClient{
+		Name:    "My SABnzbd",
+		Type:    "sabnzbd",
+		Host:    "localhost",
+		Port:    8181,
+		APIKey:  "myapikey",
+		Enabled: true,
+	}
+	if err := repo.Create(ctx, sab); err != nil {
+		t.Fatalf("create sab: %v", err)
+	}
+	gotSab, err := repo.GetByID(ctx, sab.ID)
+	if err != nil {
+		t.Fatalf("get sab: %v", err)
+	}
+	if gotSab.APIKey != "myapikey" {
+		t.Errorf("APIKey: want myapikey, got %q", gotSab.APIKey)
+	}
+	if gotSab.Username != "" || gotSab.Password != "" {
+		t.Errorf("sabnzbd should not populate virtual creds, got user=%q pass=%q", gotSab.Username, gotSab.Password)
+	}
+}
+
+func TestDownloadClientRepoGetEnabledByProtocol(t *testing.T) {
+	database, err := OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	ctx := context.Background()
+	repo := NewDownloadClientRepo(database)
+
+	sab := &models.DownloadClient{Name: "SAB", Type: "sabnzbd", Host: "h", Port: 1, APIKey: "k", Enabled: true, Priority: 1}
+	qbt := &models.DownloadClient{Name: "QBT", Type: "qbittorrent", Host: "h", Port: 2, Enabled: true, Priority: 1}
+	repo.Create(ctx, sab)
+	repo.Create(ctx, qbt)
+
+	usenet, err := repo.GetEnabledByProtocol(ctx, "usenet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(usenet) != 1 || usenet[0].Type != "sabnzbd" {
+		t.Errorf("usenet: expected 1 sabnzbd client, got %v", usenet)
+	}
+
+	torrents, err := repo.GetEnabledByProtocol(ctx, "torrent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(torrents) != 1 || torrents[0].Type != "qbittorrent" {
+		t.Errorf("torrent: expected 1 qbittorrent client, got %v", torrents)
+	}
+
+	// GetFirstEnabledByProtocol falls back to any client when none of the
+	// preferred type exists
+	client, err := repo.GetFirstEnabledByProtocol(ctx, "torrent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client == nil || client.Type != "qbittorrent" {
+		t.Errorf("expected qbittorrent fallback, got %v", client)
+	}
+}
+
 // Regression for https://github.com/vavallee/bindery/issues/8 — deleting an
 // author failed with SQLITE_CONSTRAINT_FOREIGNKEY (787) because the
 // `downloads` table had bare `REFERENCES books(id)` (NO ACTION) and blocked
