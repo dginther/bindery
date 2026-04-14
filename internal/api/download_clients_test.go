@@ -102,7 +102,7 @@ func TestDownloadClientCreate_Validation(t *testing.T) {
 	h, _ := downloadClientFixture(t)
 	for _, body := range []string{
 		`{}`,
-		`{"name":"x"}`,        // missing host
+		`{"name":"x"}`,         // missing host
 		`{"host":"localhost"}`, // missing name
 		`not-json`,
 	} {
