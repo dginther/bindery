@@ -328,6 +328,93 @@ func TestFilterUsenetJunk(t *testing.T) {
 	}
 }
 
+func TestDedupeByGUID(t *testing.T) {
+	results := []newznab.SearchResult{
+		{GUID: "abc", Title: "First"},
+		{GUID: "abc", Title: "Duplicate"},
+		{GUID: "def", Title: "Unique"},
+	}
+	got := dedupe(results)
+	if len(got) != 2 {
+		t.Errorf("expected 2 after dedup, got %d: %v", len(got), resultTitles(got))
+	}
+	if got[0].GUID != "abc" || got[1].GUID != "def" {
+		t.Errorf("unexpected dedup order: %v", resultTitles(got))
+	}
+}
+
+func TestDedupeByTitleURL(t *testing.T) {
+	// Results with empty GUID fall back to Title+NZBURL as key
+	results := []newznab.SearchResult{
+		{GUID: "", Title: "Book", NZBURL: "http://a"},
+		{GUID: "", Title: "Book", NZBURL: "http://a"}, // duplicate
+		{GUID: "", Title: "Book", NZBURL: "http://b"}, // different URL
+	}
+	got := dedupe(results)
+	if len(got) != 2 {
+		t.Errorf("expected 2 after title+url dedup, got %d", len(got))
+	}
+}
+
+func TestProtocolForType(t *testing.T) {
+	if p := protocolForType("torznab"); p != "torrent" {
+		t.Errorf("torznab → want torrent, got %q", p)
+	}
+	if p := protocolForType("newznab"); p != "usenet" {
+		t.Errorf("newznab → want usenet, got %q", p)
+	}
+	if p := protocolForType(""); p != "usenet" {
+		t.Errorf("empty → want usenet, got %q", p)
+	}
+}
+
+func TestFilterByLanguageAllDropped(t *testing.T) {
+	results := toResults(
+		"Le.Moineau.FRENCH.epub",
+		"Das.Buch.GERMAN.epub",
+	)
+	got := FilterByLanguage(results, "en")
+	if len(got) != 0 {
+		t.Errorf("expected all foreign results dropped, got %v", resultTitles(got))
+	}
+}
+
+func TestFilterByLanguagePassesAllWhenNoForeignTags(t *testing.T) {
+	results := toResults("Book.A.epub", "Book.B.epub")
+	got := FilterByLanguage(results, "en")
+	if len(got) != 2 {
+		t.Errorf("results without foreign tags must all pass, got %d", len(got))
+	}
+}
+
+func TestIsArticle(t *testing.T) {
+	for _, w := range []string{"the", "The", "THE", "a", "A", "an", "AN"} {
+		if !IsArticle(w) {
+			t.Errorf("%q should be an article", w)
+		}
+	}
+	for _, w := range []string{"book", "sparrow", "dune", ""} {
+		if IsArticle(w) {
+			t.Errorf("%q should NOT be an article", w)
+		}
+	}
+}
+
+func TestTitleMatchesSingleKeyword(t *testing.T) {
+	// Single keyword without surname → accept (can't do better)
+	if !titleMatchesResult("dune", []string{"dune"}, "", false) {
+		t.Error("single keyword, no surname → should accept")
+	}
+	// Single keyword with non-matching surname → reject
+	if titleMatchesResult("dune.novel", []string{"dune"}, "herbert", false) {
+		t.Error("single keyword missing surname → should reject")
+	}
+	// Single keyword with matching surname → accept
+	if !titleMatchesResult("dune.herbert", []string{"dune"}, "herbert", false) {
+		t.Error("single keyword + matching surname → should accept")
+	}
+}
+
 func TestIsAudiobookFormat(t *testing.T) {
 	for _, f := range []string{"m4b", "m4a", "mp3", "flac", "ogg"} {
 		if !isAudiobookFormat(f) {
