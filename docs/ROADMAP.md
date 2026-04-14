@@ -15,9 +15,12 @@ The short version lives in the [README](../README.md#roadmap). Checked boxes hav
   - The settings page splits into per-user (API key, password, preferences) and admin-only (indexers, download clients, system).
   - Migration from single-user → multi-user re-parents all existing rows to the admin account.
 
-- [ ] **OIDC / SSO** — native OIDC client alongside the existing session/API-key flow (Authelia, Authentik, Keycloak, Google, GitHub).
+- **OIDC / SSO** — support both deployment shapes so Bindery fits any environment.
 
-  Currently the suggested path is to put Bindery behind a reverse proxy that terminates SSO and set the auth mode to **Disabled** on the internal network — see the [Reverse-proxy & SSO wiki page](https://github.com/vavallee/bindery/wiki/Reverse-proxy-and-SSO).
+  - [ ] **Native OIDC client** — sign in directly against Authelia / Authentik / Keycloak / Google / GitHub without a reverse proxy in the path. Session cookies from the OIDC flow live alongside the existing username/password and API-key auth; users can mix.
+  - [ ] **Reverse-proxy SSO** — accept upstream-proxy identity headers (`X-Forwarded-User` / `Remote-User`) when auth mode is **Disabled** or the trusted-proxy allowlist is configured. Already the documented workaround today (see the [Reverse-proxy & SSO wiki page](https://github.com/vavallee/bindery/wiki/Reverse-proxy-and-SSO)); formalize it as a first-class path with a trust list so operators don't have to turn auth off wholesale. Overlaps with the [Reverse-proxy header trust](#) item below.
+
+  Goal: the same release supports both homelab users who already run Authelia at the edge **and** users who want to plug OIDC straight into Bindery without standing up a proxy.
 
 - [ ] **Reverse-proxy header trust** — accept `X-Forwarded-User` / `Remote-User` from a configurable list of trusted upstream proxies so SSO-at-the-edge setups don't require the auth-mode-disabled escape hatch.
 
