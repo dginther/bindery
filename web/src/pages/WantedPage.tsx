@@ -46,14 +46,16 @@ export default function WantedPage() {
     }
   }
 
-  const grab = async (result: SearchResult, bookId: number) => {
+  const grab = async (result: SearchResult, book: Book) => {
     try {
       await api.grab({
         guid: result.guid,
         title: result.title,
         nzbUrl: result.nzbUrl,
         size: result.size,
-        bookId,
+        bookId: book.id,
+        protocol: result.protocol,
+        mediaType: book.mediaType,
       })
       setShowResults(null)
       // Refresh wanted list
@@ -150,7 +152,7 @@ export default function WantedPage() {
                         <span className="text-slate-600 dark:text-zinc-500 truncate block">{r.indexerName} &middot; {formatSize(r.size)} &middot; {r.grabs} grabs</span>
                       </div>
                       <button
-                        onClick={() => grab(r, book.id)}
+                        onClick={() => grab(r, book)}
                         className="px-2 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-[10px] font-medium flex-shrink-0 touch-manipulation"
                       >
                         Grab

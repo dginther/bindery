@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/vavallee/bindery/internal/models"
@@ -109,4 +110,85 @@ func (r *DownloadClientRepo) Update(ctx context.Context, c *models.DownloadClien
 func (r *DownloadClientRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM download_clients WHERE id=?", id)
 	return err
+}
+
+// GetFirstEnabledByProtocol returns the highest-priority enabled client that
+// matches the given protocol ("usenet" → sabnzbd, "torrent" → qbittorrent).
+// Falls back to the first enabled client of any type if no match is found.
+func (r *DownloadClientRepo) GetFirstEnabledByProtocol(ctx context.Context, protocol string) (*models.DownloadClient, error) {
+	clientType := "sabnzbd"
+	if protocol == "torrent" {
+		clientType = "qbittorrent"
+	}
+
+	var c models.DownloadClient
+	var enabled, useSSL int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+		FROM download_clients WHERE enabled=1 AND type=? ORDER BY priority LIMIT 1`, clientType).
+		Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
+			&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return r.GetFirstEnabled(ctx)
+	}
+	c.Enabled = enabled == 1
+	c.UseSSL = useSSL == 1
+	return &c, nil
+}
+
+// GetEnabledByProtocol returns all enabled clients matching the given protocol,
+// ordered by priority. Used when multiple clients of the same type exist and
+// the caller needs to pick the best one by category.
+func (r *DownloadClientRepo) GetEnabledByProtocol(ctx context.Context, protocol string) ([]models.DownloadClient, error) {
+	clientType := "sabnzbd"
+	if protocol == "torrent" {
+		clientType = "qbittorrent"
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+		FROM download_clients WHERE enabled=1 AND type=? ORDER BY priority`, clientType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clients []models.DownloadClient
+	for rows.Next() {
+		var c models.DownloadClient
+		var enabled, useSSL int
+		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
+			&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		c.Enabled = enabled == 1
+		c.UseSSL = useSSL == 1
+		clients = append(clients, c)
+	}
+	return clients, rows.Err()
+}
+
+// PickClientForMediaType selects the best client from a list by preferring one
+// whose category hints match the media type. For audiobooks, prefer a client
+// with "audio" in the category name; for ebooks, prefer one without "audio".
+// Falls back to the first (highest-priority) client if no preference matches.
+func PickClientForMediaType(clients []models.DownloadClient, mediaType string) *models.DownloadClient {
+	if len(clients) == 0 {
+		return nil
+	}
+	if len(clients) == 1 {
+		return &clients[0]
+	}
+	for i := range clients {
+		cat := strings.ToLower(clients[i].Category)
+		if mediaType == "audiobook" && strings.Contains(cat, "audio") {
+			return &clients[i]
+		}
+		if mediaType != "audiobook" && !strings.Contains(cat, "audio") {
+			return &clients[i]
+		}
+	}
+	return &clients[0]
 }
