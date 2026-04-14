@@ -22,10 +22,11 @@ type AuthorHandler struct {
 	meta     *metadata.Aggregator
 	settings *db.SettingsRepo
 	profiles *db.MetadataProfileRepo
+	searcher BookSearcher
 }
 
-func NewAuthorHandler(authors *db.AuthorRepo, books *db.BookRepo, series *db.SeriesRepo, meta *metadata.Aggregator, settings *db.SettingsRepo, profiles *db.MetadataProfileRepo) *AuthorHandler {
-	return &AuthorHandler{authors: authors, books: books, series: series, meta: meta, settings: settings, profiles: profiles}
+func NewAuthorHandler(authors *db.AuthorRepo, books *db.BookRepo, series *db.SeriesRepo, meta *metadata.Aggregator, settings *db.SettingsRepo, profiles *db.MetadataProfileRepo, searcher BookSearcher) *AuthorHandler {
+	return &AuthorHandler{authors: authors, books: books, series: series, meta: meta, settings: settings, profiles: profiles, searcher: searcher}
 }
 
 func (h *AuthorHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -308,6 +309,11 @@ func (h *AuthorHandler) FetchAuthorBooks(author *models.Author) {
 			if err := h.series.LinkBook(ctx, s.ID, b.ID, ref.Position, ref.Primary); err != nil {
 				slog.Warn("failed to link book to series", "book", b.Title, "series", ref.Title, "error", err)
 			}
+		}
+
+		// Auto-search the freshly-added wanted book if configured.
+		if h.searcher != nil && author.Monitored {
+			h.searcher.SearchAndGrabBook(ctx, b)
 		}
 	}
 	slog.Info("author books synced", "author", author.Name, "added", added, "skipped_language", skippedLang, "skipped_junk", skippedJunk, "total", len(books))
