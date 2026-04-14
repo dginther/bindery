@@ -266,3 +266,22 @@ func (c *captureWriter) Header() http.Header {
 }
 func (c *captureWriter) Write(b []byte) (int, error) { return len(b), nil }
 func (c *captureWriter) WriteHeader(s int)           { c.status = s }
+
+func TestParseMode(t *testing.T) {
+	if m := ParseMode("enabled"); m != ModeEnabled {
+		t.Errorf("want ModeEnabled, got %q", m)
+	}
+	if m := ParseMode("local-only"); m != ModeLocalOnly {
+		t.Errorf("want ModeLocalOnly, got %q", m)
+	}
+	if m := ParseMode("disabled"); m != ModeDisabled {
+		t.Errorf("want ModeDisabled, got %q", m)
+	}
+	// unknown → defaults to enabled
+	if m := ParseMode("garbage"); m != ModeEnabled {
+		t.Errorf("unknown mode should default to ModeEnabled, got %q", m)
+	}
+	if m := ParseMode(""); m != ModeEnabled {
+		t.Errorf("empty mode should default to ModeEnabled, got %q", m)
+	}
+}
