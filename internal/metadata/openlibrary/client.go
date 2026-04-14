@@ -436,7 +436,7 @@ func seriesSlug(title string) string {
 	prevDash := false
 	for _, r := range strings.ToLower(title) {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			buf = append(buf, byte(r))
+			buf = append(buf, byte(r)) //nolint:gosec // r is gated to ASCII range above
 			prevDash = false
 		} else if !prevDash && len(buf) > 0 {
 			buf = append(buf, '-')

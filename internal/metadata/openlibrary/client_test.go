@@ -121,7 +121,7 @@ func TestExtractText(t *testing.T) {
 
 func TestParseSeriesRef(t *testing.T) {
 	tests := []struct {
-		raw      string
+		raw       string
 		wantTitle string
 		wantPos   string
 		wantFID   string
