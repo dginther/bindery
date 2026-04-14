@@ -162,10 +162,13 @@ func (h *BookHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// Fire an immediate indexer search when a book transitions into wanted
 	// status (e.g. "Delete file" flips imported → wanted, or a manual status
 	// edit). Gate on searcher to keep tests that don't wire it nil-safe.
+	// Detach the request context so the search outlives the HTTP response
+	// but keeps any request-scoped values.
 	if h.searcher != nil && req.Status != nil &&
 		*req.Status == models.BookStatusWanted && oldStatus != models.BookStatusWanted {
 		b := *book
-		go h.searcher.SearchAndGrabBook(context.Background(), b)
+		bgCtx := context.WithoutCancel(r.Context())
+		go h.searcher.SearchAndGrabBook(bgCtx, b)
 	}
 
 	writeJSON(w, http.StatusOK, book)
