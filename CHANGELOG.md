@@ -10,7 +10,7 @@ The `development` branch carries the in-flight feature set for the next release.
 
 ## [v0.7.2] — 2026-04-14
 
-Quality release. Bulk actions land for users curating large libraries (the painful-after-CSV-import flow), the silent library-scan bug fixes is fixed, and backend coverage jumps from 34% to 53% to quiet codecov and harden the regression safety net.
+Quality release. Bulk actions land for users curating large libraries (the painful-after-CSV-import flow), the silent library-scan bug is fixed, and backend coverage jumps from 34% to 53% to quiet codecov and harden the regression safety net.
 
 ### Added
 
