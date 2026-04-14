@@ -152,6 +152,53 @@ spec:
 
 `BINDERY_PUID` / `BINDERY_PGID` are **sanity checks, not user switchers.** If you set them but forget the `--user` / `runAsUser` side, Bindery fails fast at startup with a log line that shows exactly what flag was missing — replacing the usual silent `permission denied` on `/config` or the library mount. Leaving both unset skips the check entirely (Bindery runs as the default non-root UID `65532` from the distroless base).
 
+## Path remapping (multi-container / multi-pod setups)
+
+When Bindery and your download client run in **separate containers**, they typically mount the same storage volume at different paths. Bindery needs to read the files the download client just completed, but the path the client reports (e.g. `/downloads/complete/My.Book`) doesn't exist inside Bindery's container.
+
+Set `BINDERY_DOWNLOAD_PATH_REMAP` to a comma-separated list of `from:to` pairs. Bindery applies a longest-prefix match to every path the download client reports, replacing the matched prefix before it tries to access the file.
+
+**Common scenario — SABnzbd and Bindery on the same NAS storage, different mount points:**
+
+| Container | NAS path | Mount point |
+|-----------|----------|-------------|
+| SABnzbd | `/volume1/MEDIA` | `/downloads` |
+| Bindery | `/volume1/MEDIA` | `/media` |
+
+SABnzbd reports `/downloads/complete/My.Book`; Bindery remaps to `/media/complete/My.Book`.
+
+### Docker Compose
+
+```yaml
+services:
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd:latest
+    volumes:
+      - /mnt/media:/downloads        # NAS/share mounted at /downloads
+
+  bindery:
+    image: ghcr.io/vavallee/bindery:latest
+    volumes:
+      - /mnt/media:/media            # same share, different mount point
+    environment:
+      - BINDERY_DOWNLOAD_PATH_REMAP=/downloads:/media
+```
+
+### Kubernetes (Helm `values.yaml`)
+
+```yaml
+env:
+  BINDERY_DOWNLOAD_PATH_REMAP: /downloads:/media
+
+nfs:
+  enabled: true
+  server: 192.168.1.4
+  path: /volume1/MEDIA
+  mountPath: /media
+```
+
+Multiple remaps are separated by commas: `BINDERY_DOWNLOAD_PATH_REMAP=/sab/complete:/media/complete,/sab/incomplete:/media/incomplete`. Longest prefix wins, so more-specific rules take precedence over shorter ones.
+
 ## Environment variables
 
 | Variable | Default | Description |
@@ -164,7 +211,7 @@ spec:
 | `BINDERY_DOWNLOAD_DIR` | `/downloads` | Where SABnzbd places completed downloads |
 | `BINDERY_LIBRARY_DIR` | `/books` | Destination for imported ebook files |
 | `BINDERY_AUDIOBOOK_DIR` | falls back to `BINDERY_LIBRARY_DIR` | Destination for imported audiobook folders |
-| `BINDERY_DOWNLOAD_PATH_REMAP` | _(empty)_ | Comma-separated `from:to` pairs rewriting paths reported by the download client. Longest-prefix match wins. |
+| `BINDERY_DOWNLOAD_PATH_REMAP` | _(empty)_ | Comma-separated `from:to` pairs rewriting paths reported by the download client into paths Bindery can access. Required when SABnzbd and Bindery mount the same storage at different paths. Longest-prefix match wins. See [Path remapping](#path-remapping-multi-container--multi-pod-setups). |
 | `BINDERY_PUID` | _(unset)_ | Sanity check — see [Running as a specific UID/GID](#running-as-a-specific-uidgid) |
 | `BINDERY_PGID` | _(unset)_ | Sanity check — same as `BINDERY_PUID` for the primary GID |
 
