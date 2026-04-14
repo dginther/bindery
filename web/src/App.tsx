@@ -62,7 +62,7 @@ function Shell() {
               <h1 className="text-lg font-bold tracking-tight">Bindery</h1>
             </Link>
 
-            <nav className="hidden md:flex gap-1 overflow-x-auto">
+            <nav className="hidden lg:flex gap-1">
               {NAV_ITEMS.map(item => (
                 <NavLink key={item.to} to={item.to} end={item.end} className={linkClass}>
                   {item.label}
@@ -70,16 +70,16 @@ function Shell() {
               ))}
             </nav>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-shrink-0">
               {version && (
-                <span className="hidden md:block text-xs text-slate-500 dark:text-zinc-600">
+                <span className="hidden lg:block text-xs text-slate-500 dark:text-zinc-600 whitespace-nowrap">
                   {/^\d+\.\d+/.test(version) ? `v${version}` : version}
                 </span>
               )}
               {status?.authenticated && status.mode !== 'disabled' && (
                 <button
                   onClick={logout}
-                  className="hidden md:block text-xs text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  className="hidden lg:block text-xs text-slate-500 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-white transition-colors"
                   title={status.username ? `Signed in as ${status.username}` : 'Sign out'}
                 >
                   Sign out
@@ -87,7 +87,7 @@ function Shell() {
               )}
               <button
                 onClick={() => setMenuOpen(open => !open)}
-                className="md:hidden p-2 rounded-md text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-zinc-800 transition-colors"
+                className="lg:hidden p-2 rounded-md text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-zinc-800 transition-colors"
                 aria-label="Toggle menu"
               >
                 {menuOpen ? (
@@ -105,7 +105,7 @@ function Shell() {
         </div>
 
         {menuOpen && (
-          <div className="md:hidden border-t border-slate-200 dark:border-zinc-800">
+          <div className="lg:hidden border-t border-slate-200 dark:border-zinc-800">
             <nav>
               {NAV_ITEMS.map(item => (
                 <NavLink
