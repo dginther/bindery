@@ -8,6 +8,17 @@ All notable changes to Bindery are documented here. Format loosely follows
 
 The `development` branch carries the in-flight feature set for the next release. Images are published as `ghcr.io/vavallee/bindery:development` and `:dev-<sha>`; point ArgoCD at the `development` branch to follow. Treat these features as beta — schema migrations are additive and safe, but UX may still shift before tagging.
 
+## [v0.9.2] — 2026-04-15
+
+Patch release with three bug fixes and improved book cover coverage.
+
+### Fixed
+
+- **Library scanner: cross-book file assignment (closes [#81](https://github.com/vavallee/bindery/issues/81))** — the scanner could assign an imported file to a different book than the one the download was queued for when two books by the same author have similar titles. Filename matching now anchors on the originating download's book ID before falling back to the fuzzy library scan.
+- **Apostrophe search** — search terms containing apostrophes (e.g. "Ender's Game") were silently dropped by the indexer query builder, returning zero results. Apostrophes are now passed through correctly.
+- **Cover badges and circular checkboxes** — ebook/audiobook format badges were misaligned on the Books page; checkboxes throughout the UI were square. Both fixed.
+- **Book covers missing or in wrong language** — OpenLibrary attaches cover images to editions, not work records, leaving many books coverless after an author-add. The metadata enrichment pipeline (Google Books, Hardcover) now fills `ImageURL` when OpenLibrary has none, both on initial author-add and on Refresh. As a side effect, Google Books and Hardcover consistently return the dominant-language edition, reducing non-English covers for authors whose canonical OL edition is in another language (e.g. Harari).
+
 ## [v0.9.1] — 2026-04-15
 
 Patch release fixing a silent failure in the Add Author modal when OpenLibrary is temporarily unavailable.
