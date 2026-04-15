@@ -210,7 +210,10 @@ func (r *DownloadClientRepo) Create(ctx context.Context, c *models.DownloadClien
 	if err != nil {
 		return fmt.Errorf("create download client: %w", err)
 	}
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("get download client id: %w", err)
+	}
 	c.ID = id
 	c.CreatedAt = now
 	c.UpdatedAt = now
