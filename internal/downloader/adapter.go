@@ -58,7 +58,15 @@ func SendDownload(ctx context.Context, client *models.DownloadClient, sourceURL,
 	switch client.Type {
 	case "transmission":
 		trans := transmission.New(client.Host, client.Port, client.Username, client.Password, client.UseSSL)
-		torrentID, err := trans.AddTorrent(ctx, sourceURL, client.Category)
+		// Transmission's download-dir must be an absolute path. The Category
+		// field is repurposed as an optional path override for Transmission; if
+		// the user left it as a bare label (e.g. "books") we pass "" so
+		// Transmission falls back to its own configured default directory.
+		transDL := client.Category
+		if !strings.HasPrefix(transDL, "/") {
+			transDL = ""
+		}
+		torrentID, err := trans.AddTorrent(ctx, sourceURL, transDL)
 		if err != nil {
 			return nil, err
 		}

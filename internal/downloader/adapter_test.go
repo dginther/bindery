@@ -299,6 +299,59 @@ func TestSendDownload_Transmission_ZeroID(t *testing.T) {
 	}
 }
 
+// TestSendDownload_Transmission_RelativeCategoryNotSentAsDownloadDir verifies
+// that a non-absolute Category value (the common default "books") is not
+// forwarded to Transmission as download-dir, which would cause
+// "download directory path is not absolute".
+func TestSendDownload_Transmission_RelativeCategoryNotSentAsDownloadDir(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": "success",
+			"arguments": map[string]any{
+				"torrent-added": map[string]any{"id": 3, "name": "Book"},
+			},
+		})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	// "books" is a relative label — must NOT be sent as download-dir
+	client := &models.DownloadClient{Type: "transmission", Host: host, Port: port, Category: "books"}
+	if _, err := SendDownload(context.Background(), client, "magnet:?xt=urn:btih:abc", ""); err != nil {
+		t.Fatalf("SendDownload: %v", err)
+	}
+	args, _ := gotBody["arguments"].(map[string]any)
+	if _, hasDir := args["download-dir"]; hasDir {
+		t.Errorf("download-dir should not be set for relative category %q, got args: %v", "books", args)
+	}
+}
+
+// TestSendDownload_Transmission_AbsoluteCategorySentAsDownloadDir verifies
+// that when Category is an absolute path it IS forwarded as download-dir.
+func TestSendDownload_Transmission_AbsoluteCategorySentAsDownloadDir(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": "success",
+			"arguments": map[string]any{
+				"torrent-added": map[string]any{"id": 4, "name": "Book"},
+			},
+		})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "transmission", Host: host, Port: port, Category: "/custom/books"}
+	if _, err := SendDownload(context.Background(), client, "magnet:?xt=urn:btih:abc", ""); err != nil {
+		t.Fatalf("SendDownload: %v", err)
+	}
+	args, _ := gotBody["arguments"].(map[string]any)
+	if dir, _ := args["download-dir"].(string); dir != "/custom/books" {
+		t.Errorf("expected download-dir=/custom/books, got %q", dir)
+	}
+}
+
 func TestSendDownload_Qbittorrent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

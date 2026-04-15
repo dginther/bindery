@@ -1416,8 +1416,9 @@ function EditClientForm({ client, onClose, onSaved }: { client: DownloadClient; 
         <input value={credential} onChange={e => setCredential(e.target.value)} placeholder={type === 'qbittorrent' || type === 'transmission' ? 'Password' : 'API Key'} type="password" className={inputCls} />
       </div>
       <div>
-        <label className={labelCls}>Category</label>
-        <input value={category} onChange={e => setCategory(e.target.value)} placeholder="Category" className={inputCls} />
+        <label className={labelCls}>{type === 'transmission' ? 'Download Directory' : 'Category'}</label>
+        <input value={category} onChange={e => setCategory(e.target.value)} placeholder={type === 'transmission' ? '/downloads (leave blank for default)' : 'Category'} className={inputCls} />
+        {type === 'transmission' && <p className="text-xs text-slate-500 dark:text-zinc-500 mt-1">Optional absolute path override. Leave blank to use Transmission's configured default download directory.</p>}
       </div>
       <div className="flex gap-2 justify-end">
         <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 dark:text-zinc-400">Cancel</button>
@@ -1599,8 +1600,9 @@ function AddClientForm({ onClose, onAdded }: { onClose: () => void; onAdded: (c:
         <input value={credential} onChange={e => setCredential(e.target.value)} placeholder={type === 'qbittorrent' || type === 'transmission' ? 'Password' : 'API Key'} type="password" className={inputCls} />
       </div>
       <div>
-        <label className={labelCls}>Category</label>
-        <input value={category} onChange={e => setCategory(e.target.value)} placeholder="Category" className={inputCls} />
+        <label className={labelCls}>{type === 'transmission' ? 'Download Directory' : 'Category'}</label>
+        <input value={category} onChange={e => setCategory(e.target.value)} placeholder={type === 'transmission' ? '/downloads (leave blank for default)' : 'Category'} className={inputCls} />
+        {type === 'transmission' && <p className="text-xs text-slate-500 dark:text-zinc-500 mt-1">Optional absolute path override. Leave blank to use Transmission's configured default download directory.</p>}
       </div>
       <div className="flex gap-2 justify-end">
         <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 dark:text-zinc-400">Cancel</button>
