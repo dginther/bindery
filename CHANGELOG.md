@@ -8,9 +8,35 @@ All notable changes to Bindery are documented here. Format loosely follows
 
 The `development` branch carries the in-flight feature set for the next release. Images are published as `ghcr.io/vavallee/bindery:development` and `:dev-<sha>`; point ArgoCD at the `development` branch to follow. Treat these features as beta — schema migrations are additive and safe, but UX may still shift before tagging.
 
+## [v0.9.0] — 2026-04-15
+
+Major feature release completing the Calibre integration story and fixing critical onboarding issues that caused new installs to immediately fire download storms and fail to detect existing libraries.
+
 ### Added
 
-- **Calibre library import (closes [#63](https://github.com/vavallee/bindery/issues/63))** — Bindery can now ingest an existing Calibre library via a new **Import library** button in Settings → General → Calibre. The importer opens Calibre's `metadata.db` read-only, streams authors / books / series / editions / ISBNs / covers, and upserts them into Bindery — deduplicating via `books.calibre_id` first and author-alias-aware title match second, so running the import twice is idempotent. Co-authors become alias rows on the canonical author. A polled progress endpoint (`GET /api/v1/calibre/import/status`) drives a live progress bar and a final summary of `{authorsAdded, booksAdded, editionsAdded, duplicatesMerged, skipped}`. A new **Sync on startup** toggle runs the same import on every boot (off by default).
+- **Calibre library import & sync (closes [#63](https://github.com/vavallee/bindery/issues/63))** — new **Import library** button in Settings → Calibre reads `metadata.db` read-only, streams authors / books / series / editions, and upserts them into Bindery. Deduplicates via `calibre_id`, then by title+author match, so repeat imports are idempotent. Live progress bar + final stats. A **Sync on startup** toggle runs the import on every boot (off by default). A 24h background job keeps the two libraries in sync.
+- **Calibre Path B — drop-folder mode (closes [#64](https://github.com/vavallee/bindery/issues/64))** — alternative to the `calibredb add` shell-out. Set mode to **Drop folder**, point Bindery at Calibre's watched directory, and Bindery drops finished files there; Calibre picks them up automatically. Bindery then polls `metadata.db` to retrieve the assigned Calibre book id and links it back to the download/history row. Settings → Calibre now shows a three-way **Mode** selector (Off / calibredb CLI / Drop folder).
+- **OPDS 1.2 feed (closes [#65](https://github.com/vavallee/bindery/issues/65))** — OPDS catalog at `/opds/v1.2/catalog`. Navigation feeds by author and series; acquisition entries with correct MIME types for epub/mobi/m4b/mp3; full-text search at `/opds/v1.2/search?q=…`. Authenticates via HTTP Basic Auth — send your API key as the password. The feed URL is shown in Settings → General for easy copy-paste into KOReader, Moon+ Reader, etc.
+- **Global auto-grab kill-switch (closes [#69](https://github.com/vavallee/bindery/issues/69), [#74](https://github.com/vavallee/bindery/issues/74))** — new **Enable automatic grabbing** toggle in Settings → General. When off, Bindery searches indexers but never sends results to the download client; everything lands on the Wanted page for manual review. The 12h background sweep and per-book status-transition grabs all respect this flag.
+- **Scan before grab (closes [#79](https://github.com/vavallee/bindery/issues/79))** — when adding a new author, Bindery now checks the library for existing files before firing auto-search. Books already on disk are marked with their file path and skipped; only genuinely missing books are searched and grabbed.
+
+### Fixed
+
+- **Catalogue fetch decoupled from auto-grab (closes [#69](https://github.com/vavallee/bindery/issues/69))** — unchecking "Auto-grab books on add" no longer silently prevents the book catalogue from loading. The author's full book list is always fetched; the checkbox now only controls whether Bindery immediately sends found books to the download client.
+- **Library scan: improved file matching (closes [#68](https://github.com/vavallee/bindery/issues/68))** — `titleMatch` rewritten to preserve numeric tokens (`1984`, `2001`), strip stopwords so common words don't inflate overlap scores, normalize article inversion (`"Title, The"` → `"the title"`), and use a dynamic threshold so single-word titles match correctly. Author surname anchoring added: a filename with a parseable author filters out books by different authors. Expected detection rate improves from ~6% to 60%+.
+- **Scan results surfaced to UI** — the library scan now persists a `{ran_at, files_found, reconciled, unmatched}` summary to settings; Settings → Import shows the last scan result with a timestamp and a one-click **Scan Now** button.
+- **Readarr / CSV import no longer auto-grabs by default (closes [#74](https://github.com/vavallee/bindery/issues/74))** — bulk imports default to `searchOnAdd: false`. A 200-author Readarr migration no longer immediately queues 200 indexer searches.
+
+### Changed
+
+- The **"Start search for books on add"** checkbox is renamed **"Auto-grab books on add"** and its description clarified. The book catalogue is always fetched regardless of this setting.
+- Manual author **Refresh** no longer triggers auto-grab (it refreshes metadata only).
+
+### Upgrade notes
+
+- **Schema:** three additive migrations (`010_calibre_sync.sql`, `011_calibre_mode.sql`, new `editions` table). Drop-in binary or image replacement is safe.
+- **Calibre mode defaults to Off.** Existing installs using the v0.8.0 `calibre.enabled=true` boolean are automatically shown as **calibredb CLI** mode in the UI via a back-compat fallback.
+- **Auto-grab defaults to On.** Existing installs keep their current behaviour. Toggle it off in Settings → General if you prefer manual grabs.
 
 ## [v0.8.0] — 2026-04-14
 
