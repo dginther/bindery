@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
 	"github.com/vavallee/bindery/internal/db"
+	"github.com/vavallee/bindery/internal/httpsec"
 	"github.com/vavallee/bindery/internal/indexer"
 	"github.com/vavallee/bindery/internal/indexer/newznab"
 	"github.com/vavallee/bindery/internal/models"
@@ -14,13 +16,14 @@ type IndexerHandler struct {
 	indexers  *db.IndexerRepo
 	books     *db.BookRepo
 	authors   *db.AuthorRepo
+	profiles  *db.MetadataProfileRepo
 	searcher  *indexer.Searcher
 	settings  *db.SettingsRepo
 	blocklist *db.BlocklistRepo
 }
 
-func NewIndexerHandler(indexers *db.IndexerRepo, books *db.BookRepo, authors *db.AuthorRepo, searcher *indexer.Searcher, settings *db.SettingsRepo, blocklist *db.BlocklistRepo) *IndexerHandler {
-	return &IndexerHandler{indexers: indexers, books: books, authors: authors, searcher: searcher, settings: settings, blocklist: blocklist}
+func NewIndexerHandler(indexers *db.IndexerRepo, books *db.BookRepo, authors *db.AuthorRepo, profiles *db.MetadataProfileRepo, searcher *indexer.Searcher, settings *db.SettingsRepo, blocklist *db.BlocklistRepo) *IndexerHandler {
+	return &IndexerHandler{indexers: indexers, books: books, authors: authors, profiles: profiles, searcher: searcher, settings: settings, blocklist: blocklist}
 }
 
 func (h *IndexerHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +59,10 @@ func (h *IndexerHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if idx.Name == "" || idx.URL == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name and url required"})
+		return
+	}
+	if err := httpsec.ValidateOutboundURL(idx.URL, httpsec.PolicyLAN); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if idx.Type == "" {
@@ -98,6 +105,12 @@ func (h *IndexerHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&idx); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
+	}
+	if idx.URL != "" {
+		if err := httpsec.ValidateOutboundURL(idx.URL, httpsec.PolicyLAN); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 	idx.ID = id
 	if err := h.indexers.Update(r.Context(), &idx); err != nil {
@@ -156,17 +169,20 @@ func (h *IndexerHandler) SearchBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve author name for better search results
+	// Resolve author name and metadata profile for better search results.
 	authorName := ""
+	var allowedLangs []string
 	if author, err := h.authors.GetByID(r.Context(), book.AuthorID); err == nil && author != nil {
 		authorName = author.Name
+		allowedLangs = h.resolveAllowedLanguages(r.Context(), author)
 	}
 
 	crit := indexer.MatchCriteria{
-		Title:     book.Title,
-		Author:    authorName,
-		MediaType: book.MediaType,
-		ASIN:      book.ASIN,
+		Title:            book.Title,
+		Author:           authorName,
+		MediaType:        book.MediaType,
+		ASIN:             book.ASIN,
+		AllowedLanguages: allowedLangs,
 	}
 	if book.ReleaseDate != nil {
 		crit.Year = book.ReleaseDate.Year()
@@ -174,10 +190,13 @@ func (h *IndexerHandler) SearchBook(w http.ResponseWriter, r *http.Request) {
 
 	results := h.searcher.SearchBook(r.Context(), idxs, crit)
 
-	// Apply language filter
-	lang := "en"
-	if s, _ := h.settings.Get(r.Context(), "search.preferredLanguage"); s != nil {
-		lang = s.Value
+	// Apply language filter using the author's metadata-profile allowed languages.
+	// Fall back to the global search.preferredLanguage setting when no profile is found.
+	lang := langFilterFromAllowed(allowedLangs)
+	if lang == "" {
+		if s, _ := h.settings.Get(r.Context(), "search.preferredLanguage"); s != nil {
+			lang = s.Value
+		}
 	}
 	results = indexer.FilterByLanguage(results, lang)
 
@@ -193,6 +212,35 @@ func (h *IndexerHandler) SearchBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, results)
+}
+
+// resolveAllowedLanguages returns the parsed allowed-language list for an
+// author's metadata profile, falling back to English-only if the profile
+// cannot be loaded (preserves existing filtering behaviour for new installs).
+func (h *IndexerHandler) resolveAllowedLanguages(ctx context.Context, author *models.Author) []string {
+	if h.profiles == nil {
+		return []string{"eng"}
+	}
+	id := models.DefaultMetadataProfileID
+	if author.MetadataProfileID != nil {
+		id = *author.MetadataProfileID
+	}
+	p, err := h.profiles.GetByID(ctx, id)
+	if err != nil || p == nil {
+		return []string{"eng"}
+	}
+	return models.ParseAllowedLanguages(p.AllowedLanguages)
+}
+
+// langFilterFromAllowed converts an AllowedLanguages slice to the single-lang
+// token expected by indexer.FilterByLanguage. Returns "en" only when the
+// profile is English-exclusive (so the foreign-tag filter is active).
+// Returns "" for multi-language or empty profiles (filter is skipped).
+func langFilterFromAllowed(langs []string) string {
+	if len(langs) == 1 && (langs[0] == "en" || langs[0] == "eng") {
+		return "en"
+	}
+	return ""
 }
 
 // SearchQuery performs a freeform search across all indexers.

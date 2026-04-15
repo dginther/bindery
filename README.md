@@ -58,7 +58,8 @@
 - **Failure visibility** — Download errors surfaced in Queue (active) and History (permanent)
 
 ### Import & organize
-- **Automatic import** — Completed downloads matched by NZO ID, moved to library with configurable naming template
+- **Automatic import** — Completed downloads matched by NZO ID, placed in library with configurable naming template
+- **Import modes** — **Move** (default): source deleted after import. **Copy**: source kept so torrent clients continue seeding. **Hardlink**: zero extra disk, both paths share an inode (download dir and library must be on the same filesystem). Configurable under **Settings → General → Import Mode**.
 - **Naming tokens** — `{Author}`, `{SortAuthor}`, `{Title}`, `{Year}`, `{ext}` with sanitized path components
 - **Cross-filesystem moves** — Atomic rename when possible, copy+verify+delete for NFS/separate volumes
 - **History** — Every grab, import, and failure recorded with full detail (shown inline on History page)
@@ -87,9 +88,11 @@
 - **Import lists** — Auto-add authors/books from external sources; exclusion list to skip unwanted entries
 - **Tag system** — Scope indexers/profiles/notifications to specific authors
 - **Backup/restore** — Snapshot the SQLite database on demand
+- **Log viewer** — Settings → Logs shows the last 200 entries from an in-process ring buffer, colour-coded by severity with WARN/ERROR filters and 5 s auto-refresh. Runtime log level switchable to DEBUG without restarting via `PUT /api/v1/system/loglevel`
 - **Authentication** — First-run setup creates an admin account (argon2id password hashing, signed session cookies). Three modes: **Enabled** (always require login), **Local only** (bypass auth for private IPs — home network convenience), **Disabled** (no auth, for trusted reverse-proxy deployments). Per-account API key for external integrations. Per-IP rate limiting on the login endpoint.
 
 ### UI
+- **Multilingual UI** — English, French, German, and Dutch. Language auto-detected from the browser; manual override in Settings → General → Language. Persists to `localStorage` so the first paint is always in the right language.
 - **Light and dark themes** — iOS-style slider toggle in Settings → General → Appearance. First-load default respects the browser's `prefers-color-scheme`; preference persists to localStorage.
 - **Modern React SPA** — React 19 + TypeScript + Tailwind CSS 3, built with Vite.
 - **Detail pages** — Routed `/book/:id` and `/author/:id` pages replace the previous modal flow. Deep-linkable, back-button friendly, hold per-book history inline.
@@ -261,6 +264,35 @@ Otherwise the server responds with `401`. The API key lives in **Settings → Ge
 | **Troubleshooting** — permission-denied, path-remap, import failures | [Wiki](https://github.com/vavallee/bindery/wiki/Troubleshooting) |
 | **Indexer & download-client recipes** — NZBGeek / DrunkenSlug / Prowlarr / Jackett / SAB / qBit tips | [Wiki](https://github.com/vavallee/bindery/wiki/Indexer-and-downloader-recipes) |
 | **Migrating from Readarr** — step-by-step with known failure modes | [Wiki](https://github.com/vavallee/bindery/wiki/Migrating-from-Readarr) |
+
+## Security
+
+Bindery holds API keys, reaches LAN services, and writes to disk. We take that
+seriously.
+
+<p>
+  <a href="https://github.com/vavallee/bindery/security/code-scanning"><img src="https://img.shields.io/github/actions/workflow/status/vavallee/bindery/security.yml?branch=main&label=security%20scans&logo=github" alt="Security scans" /></a>
+  <a href="https://securityscorecards.dev/viewer/?uri=github.com/vavallee/bindery"><img src="https://api.securityscorecards.dev/projects/github.com/vavallee/bindery/badge" alt="OpenSSF Scorecard" /></a>
+  <a href="https://github.com/vavallee/bindery/security/dependabot"><img src="https://img.shields.io/badge/Dependabot-enabled-brightgreen?logo=dependabot" alt="Dependabot" /></a>
+  <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-blue" alt="Security policy" /></a>
+</p>
+
+Every push and every weekly cron runs gosec, govulncheck, Semgrep, gitleaks,
+Trivy, Grype, Dockle, Syft, ZAP baseline, and OpenSSF Scorecard. Findings
+upload to GitHub's Security tab as SARIF and are public-readable. Release
+images ship with SLSA build provenance and Syft SBOMs.
+
+Highlights of the in-app controls:
+
+- **SSRF guards** on every outbound URL (webhooks, indexers, download clients), with DNS-rebinding defense.
+- **Hardened headers** — CSP, `X-Frame-Options: DENY`, `Referrer-Policy`, auto HSTS when TLS is present.
+- **Cookie `Secure` auto-detect** via TLS or `X-Forwarded-Proto`, overridable.
+- **Distroless, non-root, read-only rootfs** container with all caps dropped and RuntimeDefault seccomp.
+- **Digest-pinned base images** tracked by Dependabot.
+
+To report a vulnerability, follow the process in **[SECURITY.md](SECURITY.md)**.
+The full threat model, control catalogue, and verification recipes live on
+the [wiki Security page](https://github.com/vavallee/bindery/wiki/Security).
 
 ## Contributing
 

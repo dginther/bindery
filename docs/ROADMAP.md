@@ -34,31 +34,26 @@ The short version lives in the [README](../README.md#roadmap). ✅ items have la
 
   Useful for multi-replica HA deployments.
 
-- **UI localization (i18n)** — translate the web UI into French, Dutch, and German (starting point; more languages welcome as contributors show up). Today all labels, button text, error messages, and toasts are hardcoded English strings.
-
-  - ⬜ Translation-catalogue extraction pass.
-  - ⬜ Runtime switcher (language selector in Settings, persisted in `localStorage` so it applies before first paint alongside the theme).
-  - ⬜ Locale-aware date/number formatting.
-  - ⬜ `Accept-Language` auto-detect on first load with manual override.
+- **UI localization (i18n)** — translate the web UI into French, Dutch, and German (starting point; more languages welcome as contributors show up).
+  - ✅ Translation-catalogue extraction pass (landed in v0.12.0).
+  - ✅ Runtime switcher (language selector in Settings, persisted in `localStorage` so it applies before first paint alongside the theme).
+  - ✅ Locale-aware date/number formatting.
+  - ✅ `Accept-Language` auto-detect on first load with manual override.
 
 - **Non-English indexer / metadata support** — let monitored authors and searches pull from language-tagged catalogues and filter results by language.
 
   - ✅ Per-author metadata profiles carry an `allowed_languages` list; OpenLibrary works whose language falls outside it are dropped during author ingestion ([#14](https://github.com/vavallee/bindery/issues/14), landed in v0.6.0).
-  - ⬜ Propagate the profile's languages into indexer queries (Prowlarr's `Categories` + language filters, Jackett `/api?cat=7000&...`) so Newznab-side filtering applies.
-  - ⬜ Surface the language tag in search-result and wanted-books views.
-  - ⬜ Persist Hardcover/Google Books' `language` field for editions.
+  - ✅ Propagate the profile's languages into indexer queries (Prowlarr's `Categories` + language filters, Jackett `/api?cat=7000&...`) so Newznab-side filtering applies (landed in v0.12.0).
+  - ✅ Surface the language tag in search-result and wanted-books views.
+  - ✅ Persist Hardcover/Google Books' `language` field for editions.
   - ⬜ **DNB (Deutsche Nationalbibliothek) metadata provider** ([#67](https://github.com/vavallee/bindery/issues/67)) — German national library catalogue via SRU/Z39.50 or the public JSON API. Primary use case: German-language ebooks and audiobooks where OpenLibrary coverage is thin. Calibre's DNB plugin ([calibre-dnb](https://github.com/dvdwolfsburg/calibre-dnb)) serves as a reference implementation for field mapping (title, author, ISBN, publisher, language, description).
 
   Relevant to French/Dutch/German users whose libraries are mixed-language and where indexer results in the "wrong" language are currently indistinguishable.
 
-- ⬜ **LinuxServer.io-style runtime user switching** ([#56](https://github.com/vavallee/bindery/issues/56)) — parallel image with a gosu/su-exec entrypoint that switches UID/GID at runtime based on `PUID` / `PGID`.
+- ~~**LinuxServer.io-style runtime user switching** ([#56](https://github.com/vavallee/bindery/issues/56))~~ — **Won't do.** The distroless image is deliberately minimal (no shell, no `gosu`). Runtime UID/GID switching requires a shell entrypoint, which contradicts the minimal-attack-surface posture. Pass `--user <uid>:<gid>` to `docker run` or set `securityContext.runAsUser` in Helm. Closed as won't-fix.
 
-  The current distroless image is deliberately minimal (no shell, no `gosu`) — the v0.6.0 startup sanity check ([#13](https://github.com/vavallee/bindery/issues/13)) catches PUID/PGID misconfiguration but does not fix it. Trade-offs:
-
-  - Distroless image: smaller, smaller attack surface, no runtime user-switching → the user has to pass `--user`.
-  - LSIO-style image: larger, needs shell + gosu, but "just works" for users coming from the *arr ecosystem.
-
-  The likely path is to publish **both** and let operators pick.
+- **Import mode — move / copy / hardlink** ([#54](https://github.com/vavallee/bindery/issues/54))
+  - ✅ **Move / Copy / Hardlink** (landed in v0.12.0) — configurable under **Settings → General → Import Mode**. Hardlink requires the download dir and library on the same filesystem. Copy preserves the source so torrent clients continue seeding.
 
 - **Calibre library integration** — treat a Calibre library as a first-class storage target, for users who already live in Calibre or want e-reader sync.
 
@@ -69,6 +64,18 @@ The short version lives in the [README](../README.md#roadmap). ✅ items have la
   - ✅ **Path B — Calibre-watched drop folder** ([#64](https://github.com/vavallee/bindery/issues/64), landed in v0.9.0) — alternative for users who'd rather let Calibre do its own ingestion (the [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated) pattern): Bindery drops finished files into a configured watch directory, Calibre auto-adds them, and Bindery polls `metadata.db` to discover the new book row and link it to the originating grab / history entry.
   - ✅ **Configurable per-library mode** ([#64](https://github.com/vavallee/bindery/issues/64), landed in v0.9.0) — Settings → General → Calibre exposes a mode selector: **Off**, **calibredb CLI** (Path A), or **Drop folder** (Path B). Toggling takes effect without a restart.
   - ✅ **OPDS feed** ([#65](https://github.com/vavallee/bindery/issues/65), landed in v0.9.0) — OPDS 1.2 Atom catalogue at `/opds/v1.2/` so KOReader / Moon+ Reader / etc. can browse and download without running Calibre itself. Authenticated with HTTP Basic Auth (API key as password).
+
+## v2 horizon
+
+These items are too large or architectural for a minor release. They define the v2 milestone — the set of changes that would warrant a major version bump.
+
+- **Multi-user with role separation** — Full multi-tenant model: every author, book, profile, and download history row is scoped to an owner. Admin role retains global access (indexers, download clients, system settings). Library overlap handled by shared "global" authors that any user can monitor. Needs schema migration, API layer changes, and a rewritten Settings page split into per-user and admin sections. Blocked on the token-based OIDC work below (need identity from multiple providers before multi-user makes sense).
+
+- **Native OIDC / SSO with multi-provider discovery** — Sign in against Authelia, Authentik, Keycloak, Google, or GitHub natively without an external reverse proxy. Session tokens issued by Bindery after validating the OIDC callback. Overlaps with the multi-user story: each OIDC subject maps to a Bindery user row.
+
+- **External database (MySQL / Postgres)** ([#86](https://github.com/vavallee/bindery/issues/86)) — The current `modernc.org/sqlite` driver is zero-CGO and ships inside the binary, which is excellent for single-instance homelabs. Multi-replica HA requires a shared external store. SQLite WAL is not a substitute for row-level locking under concurrent writers. The schema is already designed with foreign keys and explicit transactions; porting to `database/sql` + a MySQL/Postgres driver is feasible but requires end-to-end testing against both engines, a migration planner that works per-engine, and probably a connection-pool configurator in Settings.
+
+- **Persistent structured log store** — The current ring buffer (1 000 entries, in-process memory) is a good v1 for the log viewer (Settings → Logs, [#93](https://github.com/vavallee/bindery/issues/93)). A v2 log store would persist entries to the database (or a rolling log file), survive restarts, be queryable across date ranges, and support structured search. Useful for incident retrospectives on long-running instances.
 
 ## Explicitly out of scope
 

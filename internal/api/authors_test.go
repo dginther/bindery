@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -331,6 +333,7 @@ func TestFetchAuthorBooks_SkipsSearchForOwnedBooks(t *testing.T) {
 	}
 	if ownedBook == nil {
 		t.Fatal("expected 'Already Owned' book to be created in DB")
+		return
 	}
 	if ownedBook.FilePath != finder.ownedPath {
 		t.Errorf("expected file path %q, got %q", finder.ownedPath, ownedBook.FilePath)
@@ -373,5 +376,85 @@ func TestFetchAuthorBooks_SkipsSearchWhenNotMonitored(t *testing.T) {
 
 	if titles := spy.titles(); len(titles) != 0 {
 		t.Errorf("expected no searcher calls for unmonitored author, got %v", titles)
+	}
+}
+
+// fixedAuthorProvider is a minimal metadata provider whose GetAuthor always
+// returns a pre-set author, regardless of the foreignID argument. Used to
+// simulate the race-condition path in TestCreateAuthor_DuplicateConstraint.
+type fixedAuthorProvider struct {
+	stubMetaProvider
+	result *models.Author
+}
+
+func (p *fixedAuthorProvider) GetAuthor(_ context.Context, _ string) (*models.Author, error) {
+	return p.result, nil
+}
+
+// TestCreateAuthor_DuplicateConstraint_Returns409 is a regression test for
+// issue #91: when the database INSERT fails with a UNIQUE constraint violation
+// (the race-condition path where GetByForeignID passes but the row already
+// exists by the time the INSERT executes), the handler must return 409 instead
+// of 500.
+func TestCreateAuthor_DuplicateConstraint_Returns409(t *testing.T) {
+	database, err := db.OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	authorRepo := db.NewAuthorRepo(database)
+	bookRepo := db.NewBookRepo(database)
+	profileRepo := db.NewMetadataProfileRepo(database)
+	ctx := context.Background()
+
+	const existingForeignID = "OL_DUPL_99A"
+
+	// Pre-populate the DB with an author that has existingForeignID.
+	existing := &models.Author{
+		ForeignID: existingForeignID, Name: "Existing Author", SortName: "Author, Existing",
+		MetadataProvider: "openlibrary", Monitored: true,
+	}
+	if err := authorRepo.Create(ctx, existing); err != nil {
+		t.Fatal(err)
+	}
+
+	// The metadata provider returns an author with the *same* ForeignID as the
+	// one already in the DB, even though the request uses a different ID. This
+	// reproduces the race-condition path: GetByForeignID("OL_NEW") returns nil
+	// (check passes), but meta.GetAuthor returns ForeignID="OL_DUPL_99A" which
+	// already exists, so the INSERT hits the UNIQUE constraint.
+	provider := &fixedAuthorProvider{
+		result: &models.Author{
+			ForeignID:        existingForeignID,
+			Name:             "Existing Author",
+			SortName:         "Author, Existing",
+			MetadataProvider: "openlibrary",
+		},
+	}
+	agg := metadata.NewAggregator(provider)
+
+	h := NewAuthorHandler(authorRepo, nil, bookRepo, nil, agg, nil, profileRepo, nil)
+
+	body, _ := json.Marshal(map[string]any{
+		"foreignAuthorId": "OL_NEW_99A", // different from existingForeignID — GetByForeignID passes
+		"authorName":      "Existing Author",
+		"monitored":       false,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/author", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	h.Create(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict for UNIQUE constraint violation, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatal("response body not valid JSON:", err)
+	}
+	if resp["error"] == "" {
+		t.Error("expected non-empty error field in response body")
 	}
 }

@@ -152,6 +152,8 @@ func (c *Client) parseResults(items []rssItem) []SearchResult {
 				r.Author = attr.Value
 			case "title":
 				r.BookTitle = attr.Value
+			case "language":
+				r.Language = attr.Value
 			}
 		}
 

@@ -153,6 +153,11 @@ func (h *AuthorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.authors.Create(r.Context(), author); err != nil {
+		slog.Error("create author failed", "foreign_id", req.ForeignID, "error", err)
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "author already exists"})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
