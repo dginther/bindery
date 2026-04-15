@@ -38,19 +38,19 @@ type calibreDropFolderWriter interface {
 
 // Scanner checks for completed downloads and imports them into the library.
 type Scanner struct {
-	downloads      *db.DownloadRepo
-	clients        *db.DownloadClientRepo
-	books          *db.BookRepo
-	authors        *db.AuthorRepo
-	history        *db.HistoryRepo
-	renamer        *Renamer
-	remapper       *Remapper
-	calibreAdder   calibreAdder
-	calibreDrop    calibreDropFolderWriter
-	calibreMode    func() calibre.Mode
-	settings       *db.SettingsRepo
-	libraryDir     string
-	audiobookDir   string
+	downloads    *db.DownloadRepo
+	clients      *db.DownloadClientRepo
+	books        *db.BookRepo
+	authors      *db.AuthorRepo
+	history      *db.HistoryRepo
+	renamer      *Renamer
+	remapper     *Remapper
+	calibreAdder calibreAdder
+	calibreDrop  calibreDropFolderWriter
+	calibreMode  func() calibre.Mode
+	settings     *db.SettingsRepo
+	libraryDir   string
+	audiobookDir string
 }
 
 // NewScanner creates an import scanner. downloadPathRemap is an optional
