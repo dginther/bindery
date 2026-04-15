@@ -296,6 +296,7 @@ func (s *Scanner) checkTransmissionDownloads(ctx context.Context, client *models
 		// Status codes: 0=stopped, 1=checking, 2=downloading, 3=seeding, 4=allocating, 5=checking, 6=stopped
 		isComplete := torrent.Status == 3 || (torrent.PercentDone >= 1.0)
 		isStopped := torrent.Status == 0 || torrent.Status == 6
+		stopError := strings.TrimSpace(torrent.ErrorString)
 
 		if isComplete && (dl.Status == models.DownloadStatusDownloading || dl.Status == models.DownloadStatusQueued) {
 			// Download is complete
@@ -303,9 +304,12 @@ func (s *Scanner) checkTransmissionDownloads(ctx context.Context, client *models
 			s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusCompleted)
 			s.tryImportTransmission(ctx, &dl, torrent.DownloadDir)
 		} else if isStopped && !isComplete && dl.Status != models.DownloadStatusFailed {
-			// Download was stopped before completion
-			slog.Warn("download stopped/failed", "title", dl.Title)
-			s.markDownloadFailed(ctx, &dl, "Torrent stopped before completion")
+			if stopError == "" {
+				// Transmission also reports user-paused torrents as stopped.
+				continue
+			}
+			slog.Warn("download failed", "title", dl.Title, "error", stopError)
+			s.markDownloadFailed(ctx, &dl, stopError)
 		}
 	}
 }
@@ -362,7 +366,7 @@ func (s *Scanner) checkQbittorrentDownloads(ctx context.Context, client *models.
 // sab is used to clear the SABnzbd history entry once bindery has taken
 // ownership of the files; nzoID is the history slot's NZO identifier.
 func (s *Scanner) tryImportSABnzbd(ctx context.Context, sab *sabnzbd.Client, dl *models.Download, nzoID, downloadPath string) {
-	s.tryImportInternal(ctx, dl, downloadPath, func() error {
+	s.tryImportInternal(ctx, dl, downloadPath, "sabnzbd", nzoID, func() error {
 		// Clean up SABnzbd history
 		return sab.DeleteHistory(ctx, nzoID, false)
 	})
@@ -370,15 +374,15 @@ func (s *Scanner) tryImportSABnzbd(ctx context.Context, sab *sabnzbd.Client, dl 
 
 // tryImportTransmission attempts to import a completed Transmission download into the library.
 func (s *Scanner) tryImportTransmission(ctx context.Context, dl *models.Download, downloadPath string) {
-	s.tryImportInternal(ctx, dl, downloadPath, nil)
+	s.tryImportInternal(ctx, dl, downloadPath, "transmission", safeRemoteID(dl.TorrentID), nil)
 }
 
 func (s *Scanner) tryImportQbittorrent(ctx context.Context, dl *models.Download, downloadPath string) {
-	s.tryImportInternal(ctx, dl, downloadPath, nil)
+	s.tryImportInternal(ctx, dl, downloadPath, "qbittorrent", safeRemoteID(dl.TorrentID), nil)
 }
 
 // tryImportInternal is the common import logic shared by SABnzbd and Transmission.
-func (s *Scanner) tryImportInternal(ctx context.Context, dl *models.Download, downloadPath string, cleanupFunc func() error) {
+func (s *Scanner) tryImportInternal(ctx context.Context, dl *models.Download, downloadPath, cleanupClientType, cleanupRemoteID string, cleanupFunc func() error) {
 	if s.libraryDir == "" {
 		slog.Warn("no library directory configured, skipping import")
 		return
@@ -457,7 +461,7 @@ func (s *Scanner) tryImportInternal(ctx context.Context, dl *models.Download, do
 		})
 		if cleanupFunc != nil {
 			if err := cleanupFunc(); err != nil {
-				slog.Warn("cleanup failed", "error", err)
+				slog.Warn("cleanup failed", cleanupWarnAttrs(cleanupClientType, cleanupRemoteID, err)...)
 			}
 		}
 		return
@@ -508,10 +512,28 @@ func (s *Scanner) tryImportInternal(ctx context.Context, dl *models.Download, do
 		}
 		if cleanupFunc != nil {
 			if err := cleanupFunc(); err != nil {
-				slog.Warn("cleanup failed", "error", err)
+				slog.Warn("cleanup failed", cleanupWarnAttrs(cleanupClientType, cleanupRemoteID, err)...)
 			}
 		}
 	}
+}
+
+func safeRemoteID(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return *id
+}
+
+func cleanupWarnAttrs(clientType, remoteID string, err error) []any {
+	attrs := []any{"error", err}
+	if clientType != "" {
+		attrs = append(attrs, "clientType", clientType)
+	}
+	if remoteID != "" {
+		attrs = append(attrs, "remoteID", remoteID)
+	}
+	return attrs
 }
 
 // detectDownloadFormat inspects a list of file paths and returns the media

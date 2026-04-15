@@ -184,6 +184,91 @@ func TestQueueListLiveOverlaySABnzbd(t *testing.T) {
 	}
 }
 
+func TestQueueListLiveOverlaySABnzbd_WithHigherPriorityTorrentClient(t *testing.T) {
+	sabSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("mode") != "queue" {
+			t.Fatalf("expected mode=queue, got %s", r.URL.Query().Get("mode"))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"queue": map[string]any{
+				"speed": "1.5 MB/s",
+				"slots": []map[string]any{{
+					"nzo_id":     "nzo999",
+					"percentage": "66",
+					"timeleft":   "0:05:00",
+				}},
+			},
+		})
+	}))
+	defer sabSrv.Close()
+
+	transSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/transmission/rpc" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"arguments": map[string]any{"torrents": []map[string]any{}},
+			"result":    "success",
+		})
+	}))
+	defer transSrv.Close()
+
+	h := newQueueTestHandler(t)
+
+	transHost, transPort := testServerHostPort(t, transSrv.URL)
+	_ = createTestDownloadClient(t, h, &models.DownloadClient{
+		Name:     "trans-first",
+		Type:     "transmission",
+		Host:     transHost,
+		Port:     transPort,
+		Priority: 1,
+		Enabled:  true,
+	})
+
+	sabHost, sabPort := testServerHostPort(t, sabSrv.URL)
+	sabClient := createTestDownloadClient(t, h, &models.DownloadClient{
+		Name:     "sab-second",
+		Type:     "sabnzbd",
+		Host:     sabHost,
+		Port:     sabPort,
+		APIKey:   "testkey",
+		Priority: 2,
+		Enabled:  true,
+	})
+
+	createTestDownload(t, h, &models.Download{
+		GUID:             "guid-sab-2",
+		DownloadClientID: &sabClient.ID,
+		Title:            "Sab Book 2",
+		NZBURL:           "https://example.com/book2.nzb",
+		Status:           models.DownloadStatusDownloading,
+		Protocol:         "usenet",
+		SABnzbdNzoID:     strPtr("nzo999"),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/queue", nil)
+	rr := httptest.NewRecorder()
+	h.List(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var items []QueueItem
+	if err := json.NewDecoder(rr.Body).Decode(&items); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].Percentage != "66" || items[0].TimeLeft != "0:05:00" || items[0].Speed != "1.5 MB/s" {
+		t.Fatalf("unexpected overlay when torrent client has higher priority: %+v", items[0])
+	}
+}
+
 func TestQueueListLiveOverlayTransmission(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/transmission/rpc" {

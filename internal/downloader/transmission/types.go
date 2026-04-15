@@ -9,6 +9,7 @@ type Torrent struct {
 	DownloadedEver  int64   `json:"downloadedEver"`
 	LeftUntilDone   int64   `json:"leftUntilDone"`
 	Status          int     `json:"status"` // 0=stopped, 1=checking, 2=downloading, 3=seeding, 4=allocating, 5=checking, 6=stopped
+	ErrorString     string  `json:"errorString"`
 	DownloadRate    int64   `json:"rateDownload"`
 	UploadRate      int64   `json:"rateUpload"`
 	ETA             int64   `json:"eta"`

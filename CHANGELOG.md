@@ -8,6 +8,52 @@ All notable changes to Bindery are documented here. Format loosely follows
 
 The `development` branch carries the in-flight feature set for the next release. Images are published as `ghcr.io/vavallee/bindery:development` and `:dev-<sha>`; point ArgoCD at the `development` branch to follow. Treat these features as beta — schema migrations are additive and safe, but UX may still shift before tagging.
 
+### Bindery supports Transmission as a torrent downloader alongside qBittorrent (torrent) and SABnzbd (usenet). Download dispatch and status handling are centralized through the downloader adapter layer.
+
+#### 1. Transmission Downloader Package
+- Location: `internal/downloader/transmission/`
+- Files:
+  - `client.go`:
+    - `New()`
+    - `Test()`
+    - `AddTorrent()`
+    - `GetTorrents()`
+    - `RemoveTorrent()`
+    - Handles Transmission session ID negotiation (`409` + `X-Transmission-Session-Id`)
+  - `types.go`:
+    - RPC payload types including torrent status fields and `errorString`
+
+#### 2. Database Changes
+- Migration: `internal/db/migrations/013_transmission.sql`
+  - Adds `downloads.torrent_id`
+  - Adds index on `downloads.torrent_id`
+- Migration: `internal/db/migrations/014_download_client_credentials.sql`
+  - Adds `download_clients.username` and `download_clients.password`
+  - Backfills credential clients from legacy storage (`url_base`/`api_key`) for compatibility
+
+#### 3. Model and Repository Updates
+- `internal/models/download.go`:
+  - `Download.TorrentID` for torrent remote IDs
+  - `DownloadClient.Username` and `DownloadClient.Password` persisted in dedicated DB columns
+- `internal/db/download_clients.go`:
+  - Reads/writes explicit `username`/`password` fields
+  - Keeps legacy fallback when older rows/payloads still carry credentials in `url_base`/`api_key`
+
+#### 4. Adapter and API Integration
+- `internal/downloader/adapter.go` dispatches by client type for:
+  - Connectivity tests
+  - Send download
+  - Remove download
+  - Live status overlay data
+- `internal/api/queue.go` and `internal/api/download_clients.go` use adapter-based client dispatch.
+
+#### 5. Scanner / Importer Integration
+- `internal/importer/scanner.go`:
+  - `checkTransmissionDownloads()` polls Transmission torrents via `torrent-get`
+  - Imports completed torrents into the library
+  - Failure behavior uses `errorString` for stopped torrents (details below)
+  - Cleanup warning logs include context (`clientType`, `remoteID`) for operations correlation
+
 ## [v0.10.0] — 2026-04-15
 
 Minor release adding dual-format support — a single book entry can now track an ebook and an audiobook independently.

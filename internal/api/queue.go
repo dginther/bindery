@@ -46,29 +46,57 @@ func (h *QueueHandler) List(w http.ResponseWriter, r *http.Request) {
 		items[i] = QueueItem{Download: d}
 	}
 
-	client, err := h.clients.GetFirstEnabled(r.Context())
-	if err == nil && client != nil {
-		statusByID, usesTorrentID, err := downloader.GetLiveStatuses(r.Context(), client)
-		if err == nil {
-			for i, item := range items {
-				var remoteID string
-				if usesTorrentID {
-					if item.TorrentID == nil {
-						continue
-					}
-					remoteID = *item.TorrentID
-				} else {
-					if item.SABnzbdNzoID == nil {
-						continue
-					}
-					remoteID = *item.SABnzbdNzoID
-				}
-				if status, ok := statusByID[remoteID]; ok {
-					items[i].Percentage = status.Percentage
-					items[i].TimeLeft = status.TimeLeft
-					items[i].Speed = status.Speed
-				}
+	type liveStatusResult struct {
+		statuses      map[string]downloader.LiveStatus
+		usesTorrentID bool
+	}
+
+	statusByClientID := make(map[int64]liveStatusResult)
+	for i, item := range items {
+		if item.DownloadClientID == nil {
+			continue
+		}
+
+		clientID := *item.DownloadClientID
+		result, ok := statusByClientID[clientID]
+		if !ok {
+			client, err := h.clients.GetByID(r.Context(), clientID)
+			if err != nil || client == nil || !client.Enabled {
+				statusByClientID[clientID] = liveStatusResult{}
+				continue
 			}
+
+			statuses, usesTorrentID, err := downloader.GetLiveStatuses(r.Context(), client)
+			if err != nil {
+				statusByClientID[clientID] = liveStatusResult{}
+				continue
+			}
+
+			result = liveStatusResult{statuses: statuses, usesTorrentID: usesTorrentID}
+			statusByClientID[clientID] = result
+		}
+
+		if len(result.statuses) == 0 {
+			continue
+		}
+
+		var remoteID string
+		if result.usesTorrentID {
+			if item.TorrentID == nil {
+				continue
+			}
+			remoteID = *item.TorrentID
+		} else {
+			if item.SABnzbdNzoID == nil {
+				continue
+			}
+			remoteID = *item.SABnzbdNzoID
+		}
+
+		if status, ok := result.statuses[remoteID]; ok {
+			items[i].Percentage = status.Percentage
+			items[i].TimeLeft = status.TimeLeft
+			items[i].Speed = status.Speed
 		}
 	}
 

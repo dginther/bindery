@@ -247,20 +247,14 @@ func importReadarrDownloadClients(ctx context.Context, src *sql.DB, repo *db.Dow
 			cat = "books"
 		}
 
-		// Credential-based clients (qBittorrent/Transmission) store username in
-		// url_base and password in api_key for backward-compatible schema reuse.
-		apiKey := s.APIKey
-		if apiKey == "" {
-			apiKey = s.Password
-		}
-
 		c := &models.DownloadClient{
 			Name:     name,
 			Type:     t,
 			Host:     s.Host,
 			Port:     s.Port,
-			APIKey:   apiKey,
-			URLBase:  s.Username,
+			APIKey:   s.APIKey,
+			Username: s.Username,
+			Password: s.Password,
 			Category: cat,
 			UseSSL:   s.UseSsl,
 			Enabled:  enable,

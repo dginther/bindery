@@ -218,3 +218,17 @@ func TestNewRootURLNormalizesToAPIPath(t *testing.T) {
 		t.Fatalf("expected normalized baseURL to include /api, got %s", c.baseURL)
 	}
 }
+
+func TestNewExtractsAPIKeyAndStripsItFromStoredBaseURL(t *testing.T) {
+	c := New("https://prowlarr.local:9696/1/api?apikey=from-url&foo=bar", "")
+
+	if c.apiKey != "from-url" {
+		t.Fatalf("expected API key extracted from URL, got %q", c.apiKey)
+	}
+	if strings.Contains(c.baseURL, "apikey=") {
+		t.Fatalf("expected stored baseURL not to contain apikey, got %s", c.baseURL)
+	}
+	if !strings.Contains(c.baseURL, "foo=bar") {
+		t.Fatalf("expected stored baseURL to preserve non-apikey query params, got %s", c.baseURL)
+	}
+}

@@ -15,18 +15,26 @@ type DownloadClientRepo struct {
 	db *sql.DB
 }
 
+const downloadClientSelectColumns = `
+	id, name, type, host, port, api_key, use_ssl, url_base, username, password,
+	category, priority, enabled, created_at, updated_at`
+
 func isCredentialClient(clientType string) bool {
 	return clientType == "qbittorrent" || clientType == "transmission"
 }
 
 func hydrateClientCredentials(c *models.DownloadClient) {
 	if isCredentialClient(c.Type) {
-		// Username/Password are virtual fields persisted in url_base/api_key.
-		c.Username = c.URLBase
-		c.Password = c.APIKey
+		// Backward compatibility: older rows stored credentials in url_base/api_key.
+		if strings.TrimSpace(c.Username) == "" {
+			c.Username = strings.TrimSpace(c.URLBase)
+		}
+		if c.Password == "" {
+			c.Password = c.APIKey
+		}
 		return
 	}
-	// Non-credential clients should not project api_key/url_base as credentials.
+	// Non-credential clients should not expose username/password values.
 	c.Username = ""
 	c.Password = ""
 }
@@ -35,14 +43,13 @@ func normalizeClientCredentialStorage(c *models.DownloadClient) {
 	if !isCredentialClient(c.Type) {
 		return
 	}
-	// For credential-based clients, callers may send username/password. Keep
-	// DB storage backward-compatible by writing into url_base/api_key, but do
-	// not clobber existing values with blanks.
-	if c.Username != "" {
-		c.URLBase = c.Username
+	// Backward compatibility: accept legacy payloads that sent credentials in
+	// urlBase/apiKey.
+	if strings.TrimSpace(c.Username) == "" {
+		c.Username = strings.TrimSpace(c.URLBase)
 	}
-	if c.Password != "" {
-		c.APIKey = c.Password
+	if c.Password == "" && c.APIKey != "" {
+		c.Password = c.APIKey
 	}
 }
 
@@ -52,7 +59,7 @@ func NewDownloadClientRepo(db *sql.DB) *DownloadClientRepo {
 
 func (r *DownloadClientRepo) List(ctx context.Context) ([]models.DownloadClient, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+		SELECT `+downloadClientSelectColumns+`
 		FROM download_clients ORDER BY priority`)
 	if err != nil {
 		return nil, err
@@ -64,7 +71,8 @@ func (r *DownloadClientRepo) List(ctx context.Context) ([]models.DownloadClient,
 		var c models.DownloadClient
 		var enabled, useSSL int
 		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
-			&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			&useSSL, &c.URLBase, &c.Username, &c.Password, &c.Category, &c.Priority,
+			&enabled, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		c.Enabled = enabled == 1
@@ -79,10 +87,11 @@ func (r *DownloadClientRepo) GetByID(ctx context.Context, id int64) (*models.Dow
 	var c models.DownloadClient
 	var enabled, useSSL int
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+		SELECT `+downloadClientSelectColumns+`
 		FROM download_clients WHERE id=?`, id).
 		Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
-			&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt)
+			&useSSL, &c.URLBase, &c.Username, &c.Password, &c.Category, &c.Priority,
+			&enabled, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -99,10 +108,11 @@ func (r *DownloadClientRepo) GetFirstEnabled(ctx context.Context) (*models.Downl
 	var c models.DownloadClient
 	var enabled, useSSL int
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+		SELECT `+downloadClientSelectColumns+`
 		FROM download_clients WHERE enabled=1 ORDER BY priority LIMIT 1`).
 		Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
-			&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt)
+			&useSSL, &c.URLBase, &c.Username, &c.Password, &c.Category, &c.Priority,
+			&enabled, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -122,19 +132,21 @@ func (r *DownloadClientRepo) GetFirstEnabledByProtocol(ctx context.Context, prot
 	var c models.DownloadClient
 	var enabled, useSSL int
 	query := `
-		SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+		SELECT ` + downloadClientSelectColumns + `
 		FROM download_clients WHERE enabled=1 AND type=? ORDER BY priority LIMIT 1`
 	var err error
 	if protocol == "torrent" {
 		err = r.db.QueryRowContext(ctx, `
-			SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+			SELECT `+downloadClientSelectColumns+`
 			FROM download_clients WHERE enabled=1 AND type IN (?, ?) ORDER BY priority LIMIT 1`, "qbittorrent", "transmission").
 			Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
-				&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt)
+				&useSSL, &c.URLBase, &c.Username, &c.Password, &c.Category, &c.Priority,
+				&enabled, &c.CreatedAt, &c.UpdatedAt)
 	} else {
 		err = r.db.QueryRowContext(ctx, query, "sabnzbd").
 			Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
-				&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt)
+				&useSSL, &c.URLBase, &c.Username, &c.Password, &c.Category, &c.Priority,
+				&enabled, &c.CreatedAt, &c.UpdatedAt)
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -159,11 +171,11 @@ func (r *DownloadClientRepo) GetEnabledByProtocol(ctx context.Context, protocol 
 	)
 	if protocol == "torrent" {
 		rows, err = r.db.QueryContext(ctx, `
-			SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+			SELECT `+downloadClientSelectColumns+`
 			FROM download_clients WHERE enabled=1 AND type IN (?, ?) ORDER BY priority`, "qbittorrent", "transmission")
 	} else {
 		rows, err = r.db.QueryContext(ctx, `
-			SELECT id, name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at
+			SELECT `+downloadClientSelectColumns+`
 			FROM download_clients WHERE enabled=1 AND type=? ORDER BY priority`, "sabnzbd")
 	}
 	if err != nil {
@@ -176,7 +188,8 @@ func (r *DownloadClientRepo) GetEnabledByProtocol(ctx context.Context, protocol 
 		var c models.DownloadClient
 		var enabled, useSSL int
 		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.APIKey,
-			&useSSL, &c.URLBase, &c.Category, &c.Priority, &enabled, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			&useSSL, &c.URLBase, &c.Username, &c.Password, &c.Category, &c.Priority,
+			&enabled, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		c.Enabled = enabled == 1
@@ -191,9 +204,9 @@ func (r *DownloadClientRepo) Create(ctx context.Context, c *models.DownloadClien
 	normalizeClientCredentialStorage(c)
 	now := time.Now().UTC()
 	result, err := r.db.ExecContext(ctx, `
-		INSERT INTO download_clients (name, type, host, port, api_key, use_ssl, url_base, category, priority, enabled, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.Name, c.Type, c.Host, c.Port, c.APIKey, c.UseSSL, c.URLBase, c.Category, c.Priority, c.Enabled, now, now)
+		INSERT INTO download_clients (name, type, host, port, api_key, use_ssl, url_base, username, password, category, priority, enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.Name, c.Type, c.Host, c.Port, c.APIKey, c.UseSSL, c.URLBase, c.Username, c.Password, c.Category, c.Priority, c.Enabled, now, now)
 	if err != nil {
 		return fmt.Errorf("create download client: %w", err)
 	}
@@ -209,9 +222,9 @@ func (r *DownloadClientRepo) Update(ctx context.Context, c *models.DownloadClien
 	now := time.Now().UTC()
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE download_clients SET name=?, type=?, host=?, port=?, api_key=?, use_ssl=?,
-		                            url_base=?, category=?, priority=?, enabled=?, updated_at=?
+		                            url_base=?, username=?, password=?, category=?, priority=?, enabled=?, updated_at=?
 		WHERE id=?`,
-		c.Name, c.Type, c.Host, c.Port, c.APIKey, c.UseSSL, c.URLBase, c.Category, c.Priority, c.Enabled, now, c.ID)
+		c.Name, c.Type, c.Host, c.Port, c.APIKey, c.UseSSL, c.URLBase, c.Username, c.Password, c.Category, c.Priority, c.Enabled, now, c.ID)
 	return err
 }
 

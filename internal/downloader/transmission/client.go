@@ -16,10 +16,6 @@ import (
 
 // Client interacts with the Transmission RPC API.
 // Authentication is done via HTTP Basic Auth if credentials are provided.
-//
-// Field mapping for DownloadClient storage:
-//   - APIKey  → password  (Transmission uses optional password for RPC auth)
-//   - URLBase → username  (used for RPC auth if provided)
 type Client struct {
 	baseURL   string
 	username  string
@@ -91,7 +87,7 @@ func (c *Client) AddTorrent(ctx context.Context, magnetOrURL, downloadDir string
 func (c *Client) GetTorrents(ctx context.Context, downloadDir string) ([]Torrent, error) {
 	args := map[string]interface{}{
 		"fields": []string{"id", "hashString", "name", "totalSize", "downloadedEver",
-			"leftUntilDone", "status", "rateDownload", "rateUpload", "eta",
+			"leftUntilDone", "status", "errorString", "rateDownload", "rateUpload", "eta",
 			"percentDone", "downloadDir", "labels"},
 	}
 

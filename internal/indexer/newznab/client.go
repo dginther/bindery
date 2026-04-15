@@ -26,12 +26,16 @@ type Client struct {
 func New(baseURL, apiKey string) *Client {
 	parsedURL := normalizeEndpointURL(baseURL)
 	resolvedAPIKey := strings.TrimSpace(apiKey)
-	if resolvedAPIKey == "" {
-		if u, err := url.Parse(parsedURL); err == nil {
-			if qKey := strings.TrimSpace(u.Query().Get("apikey")); qKey != "" {
+	if u, err := url.Parse(parsedURL); err == nil {
+		q := u.Query()
+		if resolvedAPIKey == "" {
+			if qKey := strings.TrimSpace(q.Get("apikey")); qKey != "" {
 				resolvedAPIKey = qKey
 			}
 		}
+		q.Del("apikey")
+		u.RawQuery = q.Encode()
+		parsedURL = strings.TrimRight(u.String(), "/")
 	}
 
 	return &Client{
@@ -222,6 +226,7 @@ func (c *Client) buildURL(command string, params map[string]string) (string, err
 	q.Del("limit")
 	q.Del("title")
 	q.Del("author")
+	q.Del("apikey")
 
 	q.Set("t", command)
 	for k, v := range params {
