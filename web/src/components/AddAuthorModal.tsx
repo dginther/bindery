@@ -19,7 +19,6 @@ export default function AddAuthorModal({ onClose, onAdded }: Props) {
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([])
   const [rootFolderId, setRootFolderId] = useState<number | null>(null)
   const [searchOnAdd, setSearchOnAdd] = useState(true)
-  const [searchError, setSearchError] = useState('')
 
   useEffect(() => {
     api.listMetadataProfiles().then(ps => {
@@ -139,11 +138,6 @@ export default function AddAuthorModal({ onClose, onAdded }: Props) {
           </div>
 
           <div className="mt-4 max-h-80 overflow-y-auto space-y-2">
-            {searchError && (
-              <p className="text-sm text-red-400 text-center py-4">
-                Could not reach the metadata provider — {searchError}
-              </p>
-            )}
             {results.map(author => (
               <div
                 key={author.foreignAuthorId}
