@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -9,8 +10,23 @@ import (
 
 	"github.com/vavallee/bindery/internal/db"
 	"github.com/vavallee/bindery/internal/downloader"
+	"github.com/vavallee/bindery/internal/httpsec"
 	"github.com/vavallee/bindery/internal/models"
 )
+
+// downloadClientURL assembles the effective URL that would be hit for a
+// download client, so httpsec.ValidateOutboundURL can check it.
+func downloadClientURL(c *models.DownloadClient) string {
+	scheme := "http"
+	if c.UseSSL {
+		scheme = "https"
+	}
+	port := c.Port
+	if port == 0 {
+		port = 8080
+	}
+	return fmt.Sprintf("%s://%s:%d/", scheme, c.Host, port)
+}
 
 type DownloadClientHandler struct {
 	clients *db.DownloadClientRepo
@@ -61,6 +77,10 @@ func (h *DownloadClientHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if c.Category == "" {
 		c.Category = "books"
 	}
+	if err := httpsec.ValidateOutboundURL(downloadClientURL(&c), httpsec.PolicyLAN); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 
 	if err := h.clients.Create(r.Context(), &c); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -81,6 +101,12 @@ func (h *DownloadClientHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
+	}
+	if c.Host != "" {
+		if err := httpsec.ValidateOutboundURL(downloadClientURL(&c), httpsec.PolicyLAN); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 	c.ID = id
 	if err := h.clients.Update(r.Context(), &c); err != nil {
