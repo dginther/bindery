@@ -260,7 +260,12 @@ export default function WantedPage() {
                       <div key={r.guid} className="flex items-center justify-between p-2 bg-slate-200/50 dark:bg-zinc-800/50 rounded text-xs">
                         <div className="min-w-0 mr-3">
                           <span className="truncate block">{r.title}</span>
-                          <span className="text-slate-600 dark:text-zinc-500 truncate block">{r.indexerName} &middot; {formatSize(r.size)} &middot; {r.grabs} grabs</span>
+                          <span className="text-slate-600 dark:text-zinc-500 truncate block">
+                            {r.indexerName} &middot; {formatSize(r.size)} &middot; {r.grabs} grabs
+                            {r.language && (
+                              <span className="ml-1.5 inline-block px-1 py-0 rounded bg-slate-300 dark:bg-zinc-700 text-[9px] font-medium uppercase tracking-wide">{r.language}</span>
+                            )}
+                          </span>
                         </div>
                         <button
                           onClick={() => grab(r, book)}

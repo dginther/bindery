@@ -377,6 +377,7 @@ export interface SearchResult {
   grabs: number
   pubDate: string
   protocol: string  // "usenet" or "torrent"
+  language?: string // ISO 639-1 from newznab:attr language (when present)
 }
 
 export interface AddAuthorRequest {

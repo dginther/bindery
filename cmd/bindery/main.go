@@ -208,7 +208,7 @@ func main() {
 	authorHandler := api.NewAuthorHandler(authorRepo, authorAliasRepo, bookRepo, seriesRepo, metaAgg, settingsRepo, metadataProfileRepo, sched).WithFinder(importScanner)
 	authorAliasHandler := api.NewAuthorAliasHandler(authorRepo, authorAliasRepo)
 	bookHandler := api.NewBookHandler(bookRepo, metaAgg, historyRepo, sched).WithSettings(settingsRepo)
-	indexerHandler := api.NewIndexerHandler(indexerRepo, bookRepo, authorRepo, idxSearcher, settingsRepo, blocklistRepo)
+	indexerHandler := api.NewIndexerHandler(indexerRepo, bookRepo, authorRepo, metadataProfileRepo, idxSearcher, settingsRepo, blocklistRepo)
 	dlClientHandler := api.NewDownloadClientHandler(dlClientRepo)
 	queueHandler := api.NewQueueHandler(downloadRepo, dlClientRepo, bookRepo, historyRepo)
 	importScanner.WithSettings(settingsRepo)

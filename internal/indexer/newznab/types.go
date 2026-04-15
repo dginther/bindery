@@ -85,4 +85,5 @@ type SearchResult struct {
 	Author      string `json:"author"`
 	BookTitle   string `json:"bookTitle"`
 	Protocol    string `json:"protocol"` // "usenet" or "torrent"
+	Language    string `json:"language,omitempty"` // ISO 639-1 from newznab:attr language (when present)
 }
