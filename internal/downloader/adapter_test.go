@@ -72,9 +72,9 @@ func TestGetLiveStatusesTransmission(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"arguments": map[string]any{
 				"torrents": []map[string]any{{
-					"id":          7,
-					"percentDone": 0.42,
-					"eta":         125,
+					"id":           7,
+					"percentDone":  0.42,
+					"eta":          125,
 					"rateDownload": 4096,
 				}},
 			},
