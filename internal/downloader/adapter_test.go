@@ -172,3 +172,269 @@ func serverHostPort(t *testing.T, raw string) (string, int) {
 	}
 	return host, port
 }
+
+// ---------------------------------------------------------------------------
+// TestClient
+// ---------------------------------------------------------------------------
+
+func TestTestClient_SABnzbd(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"categories": []string{"books"}})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "sabnzbd", Host: host, Port: port, APIKey: "k"}
+	if err := TestClient(context.Background(), client); err != nil {
+		t.Fatalf("TestClient: %v", err)
+	}
+}
+
+func TestTestClient_Transmission(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"result": "success", "arguments": map[string]any{}})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "transmission", Host: host, Port: port}
+	if err := TestClient(context.Background(), client); err != nil {
+		t.Fatalf("TestClient: %v", err)
+	}
+}
+
+func TestTestClient_Qbittorrent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
+		default:
+			_, _ = w.Write([]byte("1.2.3"))
+		}
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "qbittorrent", Host: host, Port: port, Username: "u", Password: "p"}
+	if err := TestClient(context.Background(), client); err != nil {
+		t.Fatalf("TestClient: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SendDownload
+// ---------------------------------------------------------------------------
+
+func TestSendDownload_SABnzbd(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": true, "nzo_ids": []string{"nzo42"}})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "sabnzbd", Host: host, Port: port, APIKey: "k"}
+	result, err := SendDownload(context.Background(), client, "https://example.com/file.nzb", "My Book")
+	if err != nil {
+		t.Fatalf("SendDownload: %v", err)
+	}
+	if result.RemoteID != "nzo42" {
+		t.Errorf("expected RemoteID=nzo42, got %q", result.RemoteID)
+	}
+	if result.Protocol != "usenet" {
+		t.Errorf("expected Protocol=usenet, got %q", result.Protocol)
+	}
+	if result.UsesTorrentID {
+		t.Error("expected UsesTorrentID=false for sabnzbd")
+	}
+}
+
+func TestSendDownload_SABnzbd_NoNzoID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": true, "nzo_ids": []string{}})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "sabnzbd", Host: host, Port: port, APIKey: "k"}
+	result, err := SendDownload(context.Background(), client, "https://example.com/file.nzb", "My Book")
+	if err != nil {
+		t.Fatalf("SendDownload: %v", err)
+	}
+	if result.RemoteID != "" {
+		t.Errorf("expected empty RemoteID, got %q", result.RemoteID)
+	}
+}
+
+func TestSendDownload_Transmission(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": "success",
+			"arguments": map[string]any{
+				"torrent-added": map[string]any{"id": 5, "name": "Book"},
+			},
+		})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "transmission", Host: host, Port: port}
+	result, err := SendDownload(context.Background(), client, "magnet:?xt=urn:btih:abc", "")
+	if err != nil {
+		t.Fatalf("SendDownload: %v", err)
+	}
+	if result.RemoteID != "5" {
+		t.Errorf("expected RemoteID=5, got %q", result.RemoteID)
+	}
+	if result.Protocol != "torrent" {
+		t.Errorf("expected Protocol=torrent, got %q", result.Protocol)
+	}
+	if !result.UsesTorrentID {
+		t.Error("expected UsesTorrentID=true for transmission")
+	}
+}
+
+func TestSendDownload_Transmission_ZeroID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"result": "success", "arguments": map[string]any{}})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "transmission", Host: host, Port: port}
+	if _, err := SendDownload(context.Background(), client, "magnet:?xt=urn:btih:abc", ""); err == nil {
+		t.Fatal("expected error when torrent ID is 0")
+	}
+}
+
+func TestSendDownload_Qbittorrent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/add":
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/info":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"hash": "ABCDEF123", "progress": 0.0},
+			})
+		}
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "qbittorrent", Host: host, Port: port, Username: "u", Password: "p"}
+	result, err := SendDownload(context.Background(), client, "magnet:?xt=urn:btih:ABCDEF123&dn=Book", "")
+	if err != nil {
+		t.Fatalf("SendDownload: %v", err)
+	}
+	if result.Protocol != "torrent" {
+		t.Errorf("expected Protocol=torrent, got %q", result.Protocol)
+	}
+	if !result.UsesTorrentID {
+		t.Error("expected UsesTorrentID=true for qbittorrent")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RemoveDownload
+// ---------------------------------------------------------------------------
+
+func TestRemoveDownload_SABnzbd(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": true})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "sabnzbd", Host: host, Port: port, APIKey: "k"}
+	nzoID := "nzo99"
+	dl := &models.Download{SABnzbdNzoID: &nzoID}
+	if err := RemoveDownload(context.Background(), client, dl, false); err != nil {
+		t.Fatalf("RemoveDownload: %v", err)
+	}
+}
+
+func TestRemoveDownload_SABnzbd_NilNzoID(t *testing.T) {
+	client := &models.DownloadClient{Type: "sabnzbd"}
+	dl := &models.Download{SABnzbdNzoID: nil}
+	if err := RemoveDownload(context.Background(), client, dl, false); err != nil {
+		t.Fatalf("expected nil error for empty NzoID: %v", err)
+	}
+}
+
+func TestRemoveDownload_Transmission(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"result": "success", "arguments": map[string]any{}})
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "transmission", Host: host, Port: port}
+	torrentID := "7"
+	dl := &models.Download{TorrentID: &torrentID}
+	if err := RemoveDownload(context.Background(), client, dl, false); err != nil {
+		t.Fatalf("RemoveDownload: %v", err)
+	}
+}
+
+func TestRemoveDownload_Transmission_NilID(t *testing.T) {
+	client := &models.DownloadClient{Type: "transmission"}
+	dl := &models.Download{TorrentID: nil}
+	if err := RemoveDownload(context.Background(), client, dl, false); err != nil {
+		t.Fatalf("expected nil error for nil TorrentID: %v", err)
+	}
+}
+
+func TestRemoveDownload_Transmission_InvalidID(t *testing.T) {
+	client := &models.DownloadClient{Type: "transmission"}
+	bad := "not-a-number"
+	dl := &models.Download{TorrentID: &bad}
+	if err := RemoveDownload(context.Background(), client, dl, false); err == nil {
+		t.Fatal("expected error for non-numeric torrent ID")
+	}
+}
+
+func TestRemoveDownload_Qbittorrent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
+		default:
+			_, _ = w.Write([]byte(""))
+		}
+	}))
+	defer srv.Close()
+	host, port := serverHostPort(t, srv.URL)
+	client := &models.DownloadClient{Type: "qbittorrent", Host: host, Port: port, Username: "u", Password: "p"}
+	hash := "abc123"
+	dl := &models.Download{TorrentID: &hash}
+	if err := RemoveDownload(context.Background(), client, dl, true); err != nil {
+		t.Fatalf("RemoveDownload: %v", err)
+	}
+}
+
+func TestRemoveDownload_Qbittorrent_NilID(t *testing.T) {
+	client := &models.DownloadClient{Type: "qbittorrent"}
+	dl := &models.Download{TorrentID: nil}
+	if err := RemoveDownload(context.Background(), client, dl, false); err != nil {
+		t.Fatalf("expected nil error for nil TorrentID: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Formatter helpers — missing branches
+// ---------------------------------------------------------------------------
+
+func TestEtaToTimeLeft_SecondsOnly(t *testing.T) {
+	if got := etaToTimeLeft(45); got != "45s" {
+		t.Errorf("expected \"45s\", got %q", got)
+	}
+}
+
+func TestEtaToTimeLeft_MinutesAndSeconds(t *testing.T) {
+	if got := etaToTimeLeft(90); got != "1m 30s" {
+		t.Errorf("expected \"1m 30s\", got %q", got)
+	}
+}
+
+func TestBytesPerSecondToString_MB(t *testing.T) {
+	if got := bytesPerSecondToString(2 * 1024 * 1024); got != "2.0 MB/s" {
+		t.Errorf("expected \"2.0 MB/s\", got %q", got)
+	}
+}
+
+func TestBytesPerSecondToString_Bytes(t *testing.T) {
+	if got := bytesPerSecondToString(512); got != "512 B/s" {
+		t.Errorf("expected \"512 B/s\", got %q", got)
+	}
+}
