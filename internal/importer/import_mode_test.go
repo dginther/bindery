@@ -1,9 +1,12 @@
 package importer
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/vavallee/bindery/internal/db"
 )
 
 // TestHardlinkFile verifies that HardlinkFile creates a hard link so both
@@ -158,5 +161,45 @@ func TestImportMode_Default(t *testing.T) {
 	s := &Scanner{}
 	if got := s.importMode(nil); got != "move" { //nolint:staticcheck
 		t.Errorf("importMode without settings = %q, want %q", got, "move")
+	}
+}
+
+// TestImportMode_Settings exercises all branches of importMode when a real
+// SettingsRepo is attached: "copy", "hardlink", unknown value, and absent key.
+func TestImportMode_Settings(t *testing.T) {
+	database, err := db.OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	ctx := context.Background()
+	sr := db.NewSettingsRepo(database)
+
+	s := &Scanner{}
+	s.WithSettings(sr)
+
+	cases := []struct {
+		setValue string // "" means don't set the key
+		want     string
+	}{
+		{setValue: "copy", want: "copy"},
+		{setValue: "hardlink", want: "hardlink"},
+		{setValue: "invalid", want: "move"},  // unknown value falls back to move
+		{setValue: "", want: "move"},          // absent key falls back to move
+	}
+
+	for _, tc := range cases {
+		// Reset the setting before each case.
+		_ = sr.Delete(ctx, "import.mode")
+		if tc.setValue != "" {
+			if err := sr.Set(ctx, "import.mode", tc.setValue); err != nil {
+				t.Fatalf("Set: %v", err)
+			}
+		}
+		got := s.importMode(ctx)
+		if got != tc.want {
+			t.Errorf("setValue=%q: importMode = %q, want %q", tc.setValue, got, tc.want)
+		}
 	}
 }

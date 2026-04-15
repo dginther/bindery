@@ -6,10 +6,15 @@ All notable changes to Bindery are documented here. Format loosely follows
 
 ## [Unreleased] — development branch
 
-The `development` branch carries the in-flight feature set for the next release. Images are published as `ghcr.io/vavallee/bindery:development` and `:dev-<sha>`; point ArgoCD at the `development` branch to follow. Treat these features as beta — schema migrations are additive and safe, but UX may still shift before tagging.
+Nothing yet — all in-flight work landed in v0.12.0.
+
+## [v0.12.0] — 2026-04-14
+
+Feature release adding configurable import modes, an end-to-end smoke-test suite, and a full security hardening pass (SSRF guards, security headers, SLSA provenance, OpenSSF Scorecard). First release with all GitHub Actions pinned to SHA digests.
 
 ### Added
 
+- **Import mode — move / copy / hardlink (closes [#54](https://github.com/vavallee/bindery/issues/54))** — **Settings → General → Import Mode** controls how completed downloads are placed in the library. **Move** (default) removes the source after import. **Copy** duplicates to the library and leaves the source intact so torrent clients continue seeding. **Hardlink** links both paths to the same inode (zero extra disk, seeding preserved) — requires download dir and library on the same filesystem. The setting is respected for both ebook files and audiobook folders. Migration `013_import_mode.sql` seeds the default.
 - **Log viewer in Settings → Logs (closes [#93](https://github.com/vavallee/bindery/issues/93))** — the last 1 000 log entries are held in an in-process ring buffer and exposed at `GET /api/v1/system/logs`. The Settings → Logs tab shows the 200 most recent entries colour-coded by severity, auto-refreshes every 5 s, and lets you filter by WARN/ERROR without leaving the UI. A runtime **Level** selector (`PUT /api/v1/system/loglevel`) switches between DEBUG/INFO/WARN/ERROR without restarting the process — useful for capturing verbose output while investigating a problem.
 - **UI localization — English, French, German, Dutch** — the entire web UI is now internationalised with `react-i18next`. All labels, button text, error messages, and toasts are translation-keyed. Language is auto-detected from the browser's `Accept-Language` setting and can be overridden in **Settings → General → Language** (persists to `localStorage` so the first paint is always in the right language). The language switcher includes a **System (auto)** option that delegates back to the browser.
 - **Root folders** — multiple root library paths can now be configured under **Settings → Root Folders**. Each author can be assigned to a specific root folder; unassigned authors continue to use the startup default path. Free disk space is shown next to each path.
@@ -60,21 +65,29 @@ The `development` branch carries the in-flight feature set for the next release.
   - Imports completed torrents into the library
   - Failure behavior uses `errorString` for stopped torrents (details below)
   - Cleanup warning logs include context (`clientType`, `remoteID`) for operations correlation
+- **End-to-end smoke test suite (closes [#97](https://github.com/vavallee/bindery/issues/97))** — `tests/smoke/smoke_test.go` boots the real binary against a scratch data directory and exercises the golden-path HTTP endpoints (health, auth, authors, books, settings, history, OPDS). Runs on every PR and main/development push via the `make smoke` target in CI. Catches wiring regressions (broken route registration, missing migration, bad frontend embed) that unit tests miss.
 
 ### Fixed
 
+- **Dark mode not applied on first load** — dark mode preference was only activated after visiting Settings, leaving the app in light mode on a cold start for users whose preference was already saved. `useTheme()` is now called at the `Shell` level in `App.tsx` so the correct theme is applied before any route renders.
+- **Circular checkboxes on Books page (closes [#75](https://github.com/vavallee/bindery/issues/75), [#76](https://github.com/vavallee/bindery/issues/76))** — monitor/auto-grab checkboxes on the Books and Authors pages were rendered as squares; they are now circular and visually consistent with the rest of the UI.
 - **500 on add author (closes [#91](https://github.com/vavallee/bindery/issues/91))** — when a concurrent add-author request caused a UNIQUE-constraint violation at the database layer, the handler returned a raw 500 and leaked the SQLite error message. It now returns 409 with `"author already exists"` and logs the underlying error at ERROR level with full context. A regression test covers this path.
 - **Log viewer defects (closes [#98](https://github.com/vavallee/bindery/issues/98))** — repaired column alignment, light-mode palette, timestamp formatting, attribute rendering, word-boundary wrapping, the DEBUG filter option, and the stale-ref refresh toggle. The log table is now readable in both themes and honours the selected severity filter.
 
 ### Security
 
+- **GitHub Actions pinned to SHA digests** — all actions in `ci.yml` and `security.yml` are pinned to their commit SHA (with the version tag as a comment). Satisfies the OpenSSF Scorecard Pinned-Dependencies check; eliminates the tag-mutable supply-chain risk on every workflow step.
 - **SSRF validation for outbound URLs** — webhooks, indexers, and download-client endpoints now pass through `internal/httpsec.ValidateOutboundURL` before any request is issued. The validator blocks loopback, link-local, cloud-metadata (`169.254.169.254`, `metadata.google.internal`, AWS IPv6), and (for webhooks) RFC1918 ranges; DNS results are re-checked to defeat rebinding attacks. Escape hatch: `BINDERY_NOTIFICATIONS_ALLOW_PRIVATE=1` flips webhooks to the LAN policy for on-network ntfy / Home Assistant installs.
 - **Security headers middleware** — every response emits `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and a locked-down `Content-Security-Policy` (no `unsafe-eval`, no foreign origins, `frame-ancestors 'none'`). HSTS is emitted only when TLS is detected (direct or via `X-Forwarded-Proto: https`) so plain-HTTP homelab setups don't get locked out.
 - **Session cookie `Secure` auto-detect** — the cookie's `Secure` attribute now flips on automatically behind TLS or a TLS-terminating proxy. Override with `BINDERY_COOKIE_SECURE=auto|always|never`.
 - **Upload hardening** — `/api/v1/migrate/*` now validates the multipart Content-Type against an allowlist and spools uploads to `$BINDERY_DB_PATH/../tmp` (mode `0700`) instead of the world-writable `/tmp`. The database file is chmod'd to `0600` on boot.
 - **Container / supply chain** — Docker base images are digest-pinned (node 22, Go 1.25.9, distroless static); Dependabot keeps them fresh. A `bindery healthcheck` subcommand drives the `HEALTHCHECK` directive. GoReleaser now emits Syft SBOMs (SPDX) alongside release archives. `actions/attest-build-provenance` mints SLSA provenance on every image push, verifiable with `gh attestation verify`.
 - **Helm chart** — dedicated ServiceAccount with `automountServiceAccountToken: false`, managed or externally-referenced Secret for `BINDERY_API_KEY` (no more plain env rendering), opt-in NetworkPolicy, and an opt-in ArgoCD PostSync smoke-test hook against `/api/v1/health`. `helm-unittest` cases guard the posture against regressions.
-- **CI security pipeline** — new `.github/workflows/security.yml` runs gosec, govulncheck, golangci-lint, Semgrep, gitleaks, Trivy, Grype, Dockle, Syft, ZAP baseline, hadolint, Helm lint, and kubesec on every push / PR / weekly cron. `.github/workflows/scorecard.yml` tracks OpenSSF Scorecard. All findings upload to the Security tab as SARIF. `SECURITY.md` documents the disclosure policy.
+- **CI security pipeline** — `.github/workflows/security.yml` runs gosec, govulncheck, golangci-lint, Semgrep, gitleaks, Trivy, Grype, Dockle, Syft, ZAP baseline, hadolint, Helm lint, and kubesec on every push / PR / weekly cron. `.github/workflows/scorecard.yml` tracks OpenSSF Scorecard. All findings upload to the Security tab as SARIF. `SECURITY.md` documents the disclosure policy.
+
+### Upgrade notes
+
+- **Schema:** migration `013_import_mode.sql` inserts `import.mode = move` as a new setting row. The default is backward-compatible — existing installs behave identically (files are moved as before). Change the setting in **Settings → General → Import Mode** if you want copy or hardlink behaviour.
 
 ## [v0.10.0] — 2026-04-15
 
