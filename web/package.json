@@ -12,13 +12,15 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "i18next": "^26.0.5",
+    "i18next-browser-languagedetector": "^8.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-i18next": "^17.0.3",
     "react-router-dom": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
-    "@tailwindcss/forms": "^0.5.11",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
     "@types/react": "^19.0.0",

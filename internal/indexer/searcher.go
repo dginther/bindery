@@ -29,13 +29,16 @@ func NewSearcher() *Searcher {
 // rejected. MediaType filters the indexer category set; "audiobook" narrows
 // to the Newznab audio tree (3000-range, primarily 3030), anything else
 // narrows to the books tree (7000-range).
+// AllowedLanguages is the author's metadata-profile language list; when it
+// contains exactly "eng" (or "en"), foreign-tagged releases are filtered out.
 type MatchCriteria struct {
-	Title     string
-	Author    string
-	Year      int
-	ISBN      string
-	ASIN      string // for audiobook ASIN anchoring
-	MediaType string // models.MediaTypeEbook or models.MediaTypeAudiobook
+	Title            string
+	Author           string
+	Year             int
+	ISBN             string
+	ASIN             string   // for audiobook ASIN anchoring
+	MediaType        string   // models.MediaTypeEbook or models.MediaTypeAudiobook
+	AllowedLanguages []string // from author's MetadataProfile; empty = no filter
 }
 
 // filterCategoriesForMedia returns the subset of configured indexer

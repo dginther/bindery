@@ -22,6 +22,7 @@ func indexerFixture(t *testing.T) *IndexerHandler {
 		db.NewIndexerRepo(database),
 		db.NewBookRepo(database),
 		db.NewAuthorRepo(database),
+		db.NewMetadataProfileRepo(database),
 		nil, // searcher — not needed for CRUD tests
 		db.NewSettingsRepo(database),
 		db.NewBlocklistRepo(database),
@@ -159,5 +160,25 @@ func TestIndexerSearchQuery_MissingQ(t *testing.T) {
 	h.SearchQuery(rec, httptest.NewRequest(http.MethodGet, "/indexer/search", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for missing q param, got %d", rec.Code)
+	}
+}
+
+func TestLangFilterFromAllowed(t *testing.T) {
+	for _, tc := range []struct {
+		langs []string
+		want  string
+		desc  string
+	}{
+		{[]string{"en"}, "en", "English-only (en)"},
+		{[]string{"eng"}, "en", "English-only (eng)"},
+		{[]string{"en", "fr"}, "", "multi-language — no filter"},
+		{[]string{"fr"}, "", "French-only — no English filter"},
+		{nil, "", "nil — no filter"},
+		{[]string{}, "", "empty — no filter"},
+	} {
+		got := langFilterFromAllowed(tc.langs)
+		if got != tc.want {
+			t.Errorf("%s: langFilterFromAllowed(%v) = %q, want %q", tc.desc, tc.langs, got, tc.want)
+		}
 	}
 }

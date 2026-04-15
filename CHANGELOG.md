@@ -8,7 +8,14 @@ All notable changes to Bindery are documented here. Format loosely follows
 
 The `development` branch carries the in-flight feature set for the next release. Images are published as `ghcr.io/vavallee/bindery:development` and `:dev-<sha>`; point ArgoCD at the `development` branch to follow. Treat these features as beta — schema migrations are additive and safe, but UX may still shift before tagging.
 
-### Bindery supports Transmission as a torrent downloader alongside qBittorrent (torrent) and SABnzbd (usenet). Download dispatch and status handling are centralized through the downloader adapter layer.
+### Added
+
+- **Log viewer in Settings → Logs (closes [#93](https://github.com/vavallee/bindery/issues/93))** — the last 1 000 log entries are held in an in-process ring buffer and exposed at `GET /api/v1/system/logs`. The Settings → Logs tab shows the 200 most recent entries colour-coded by severity, auto-refreshes every 5 s, and lets you filter by WARN/ERROR without leaving the UI. A runtime **Level** selector (`PUT /api/v1/system/loglevel`) switches between DEBUG/INFO/WARN/ERROR without restarting the process — useful for capturing verbose output while investigating a problem.
+- **UI localization — English, French, German, Dutch** — the entire web UI is now internationalised with `react-i18next`. All labels, button text, error messages, and toasts are translation-keyed. Language is auto-detected from the browser's `Accept-Language` setting and can be overridden in **Settings → General → Language** (persists to `localStorage` so the first paint is always in the right language). The language switcher includes a **System (auto)** option that delegates back to the browser.
+- **Root folders** — multiple root library paths can now be configured under **Settings → Root Folders**. Each author can be assigned to a specific root folder; unassigned authors continue to use the startup default path. Free disk space is shown next to each path.
+- **Language propagation into indexer queries** — search queries now include the author's metadata-profile language filter. For Prowlarr/Jackett, the allowed-language codes are appended to the query so foreign-language releases can be excluded on the indexer side as well as during metadata ingestion. The outgoing query string is visible at DEBUG level in the new log viewer.
+- **Language field from metadata providers** — Google Books and Hardcover now populate the `language` field on book records. Hardcover exposes language via the `editions` GraphQL node; Google Books via the `volumeInfo.language` JSON field. Language pills are surfaced in the Wanted page result rows when the indexer returns `<newznab:attr name="language">`.
+- **Bindery supports Transmission as a torrent downloader** alongside qBittorrent (torrent) and SABnzbd (usenet). Download dispatch and status handling are centralized through the downloader adapter layer.
 
 #### 1. Transmission Downloader Package
 - Location: `internal/downloader/transmission/`
@@ -53,6 +60,10 @@ The `development` branch carries the in-flight feature set for the next release.
   - Imports completed torrents into the library
   - Failure behavior uses `errorString` for stopped torrents (details below)
   - Cleanup warning logs include context (`clientType`, `remoteID`) for operations correlation
+
+### Fixed
+
+- **500 on add author (closes [#91](https://github.com/vavallee/bindery/issues/91))** — when a concurrent add-author request caused a UNIQUE-constraint violation at the database layer, the handler returned a raw 500 and leaked the SQLite error message. It now returns 409 with `"author already exists"` and logs the underlying error at ERROR level with full context. A regression test covers this path.
 
 ## [v0.10.0] — 2026-04-15
 

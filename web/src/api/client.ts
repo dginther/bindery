@@ -42,6 +42,14 @@ export const api = {
   // System
   health: () => request<{ status: string; version: string }>('/health'),
   status: () => request<{ version: string; commit: string; buildDate: string }>('/system/status'),
+  getLogs: (level?: string, limit?: number) =>
+    request<LogEntry[]>(`/system/logs${level || limit ? '?' + new URLSearchParams({
+      ...(level ? { level } : {}),
+      ...(limit ? { limit: String(limit) } : {}),
+    }) : ''}`),
+  getLogLevel: () => request<{ level: string }>('/system/loglevel'),
+  setLogLevel: (level: string) =>
+    request<{ level: string }>('/system/loglevel', { method: 'PUT', body: JSON.stringify({ level }) }),
 
   // Auth
   authStatus: () => request<AuthStatus>('/auth/status'),
@@ -205,6 +213,11 @@ export const api = {
   listCustomFormats: () => request<CustomFormat[]>('/customformat'),
   addCustomFormat: (data: Partial<CustomFormat>) => request<CustomFormat>('/customformat', { method: 'POST', body: JSON.stringify(data) }),
   deleteCustomFormat: (id: number) => request<void>(`/customformat/${id}`, { method: 'DELETE' }),
+
+  // Root Folders
+  listRootFolders: () => request<RootFolder[]>('/rootfolder'),
+  addRootFolder: (path: string) => request<RootFolder>('/rootfolder', { method: 'POST', body: JSON.stringify({ path }) }),
+  deleteRootFolder: (id: number) => request<void>(`/rootfolder/${id}`, { method: 'DELETE' }),
 }
 
 // Types
@@ -364,6 +377,7 @@ export interface SearchResult {
   grabs: number
   pubDate: string
   protocol: string  // "usenet" or "torrent"
+  language?: string // ISO 639-1 from newznab:attr language (when present)
 }
 
 export interface AddAuthorRequest {
@@ -477,6 +491,20 @@ export interface CustomFormat {
     negate: boolean
     required: boolean
   }>
+}
+
+export interface RootFolder {
+  id: number
+  path: string
+  freeSpace: number
+  createdAt: string
+}
+
+export interface LogEntry {
+  time: string
+  level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
+  msg: string
+  attrs?: Record<string, string>
 }
 
 export type AuthorBulkAction = 'monitor' | 'unmonitor' | 'delete' | 'search'
