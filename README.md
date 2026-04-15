@@ -58,7 +58,8 @@
 - **Failure visibility** — Download errors surfaced in Queue (active) and History (permanent)
 
 ### Import & organize
-- **Automatic import** — Completed downloads matched by NZO ID, moved to library with configurable naming template
+- **Automatic import** — Completed downloads matched by NZO ID, placed in library with configurable naming template
+- **Import modes** — **Move** (default): source deleted after import. **Copy**: source kept so torrent clients continue seeding. **Hardlink**: zero extra disk, both paths share an inode (download dir and library must be on the same filesystem). Configurable under **Settings → General → Import Mode**.
 - **Naming tokens** — `{Author}`, `{SortAuthor}`, `{Title}`, `{Year}`, `{ext}` with sanitized path components
 - **Cross-filesystem moves** — Atomic rename when possible, copy+verify+delete for NFS/separate volumes
 - **History** — Every grab, import, and failure recorded with full detail (shown inline on History page)
