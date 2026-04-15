@@ -158,7 +158,9 @@ type readarrSettings struct {
 
 func parseSettings(raw string) readarrSettings {
 	var s readarrSettings
-	_ = json.Unmarshal([]byte(raw), &s)
+	if err := json.Unmarshal([]byte(raw), &s); err != nil {
+		slog.Warn("failed to parse readarr settings JSON", "err", err)
+	}
 	return s
 }
 

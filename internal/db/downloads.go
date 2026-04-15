@@ -67,7 +67,10 @@ func (r *DownloadRepo) Create(ctx context.Context, d *models.Download) error {
 	if err != nil {
 		return fmt.Errorf("create download: %w", err)
 	}
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("get download id: %w", err)
+	}
 	d.ID = id
 	d.AddedAt = now
 	return nil

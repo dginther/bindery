@@ -211,11 +211,12 @@ func (s *Scanner) CheckDownloads(ctx context.Context) {
 		return
 	}
 
-	if client.Type == "transmission" {
+	switch client.Type {
+	case "transmission":
 		s.checkTransmissionDownloads(ctx, client)
-	} else if client.Type == "qbittorrent" {
+	case "qbittorrent":
 		s.checkQbittorrentDownloads(ctx, client)
-	} else {
+	default:
 		s.checkSABnzbdDownloads(ctx, client)
 	}
 }
@@ -230,15 +231,40 @@ func isTrackedTorrentDownloadForClient(dl models.Download, clientID int64) bool 
 	return dl.Status != models.DownloadStatusImported && dl.Status != models.DownloadStatusFailed
 }
 
+func (s *Scanner) setDownloadError(ctx context.Context, id int64, message string) {
+	if err := s.downloads.SetError(ctx, id, message); err != nil {
+		slog.Warn("failed to persist download error", "download_id", id, "error", err)
+	}
+}
+
+func (s *Scanner) updateDownloadStatus(ctx context.Context, id int64, status string) {
+	if err := s.downloads.UpdateStatus(ctx, id, status); err != nil {
+		slog.Warn("failed to update download status", "download_id", id, "status", status, "error", err)
+	}
+}
+
+func (s *Scanner) createHistoryEvent(ctx context.Context, eventType string, sourceTitle string, bookID *int64, data map[string]string) {
+	if s.history == nil {
+		return
+	}
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		slog.Warn("failed to marshal history event data", "event_type", eventType, "error", err)
+		return
+	}
+	if err := s.history.Create(ctx, &models.HistoryEvent{
+		BookID:      bookID,
+		EventType:   eventType,
+		SourceTitle: sourceTitle,
+		Data:        string(dataJSON),
+	}); err != nil {
+		slog.Warn("failed to create history event", "event_type", eventType, "error", err)
+	}
+}
+
 func (s *Scanner) markDownloadFailed(ctx context.Context, dl *models.Download, message string) {
-	s.downloads.SetError(ctx, dl.ID, message)
-	eventData, _ := json.Marshal(map[string]string{"guid": dl.GUID, "message": message})
-	s.history.Create(ctx, &models.HistoryEvent{
-		BookID:      dl.BookID,
-		EventType:   models.HistoryEventDownloadFailed,
-		SourceTitle: dl.Title,
-		Data:        string(eventData),
-	})
+	s.setDownloadError(ctx, dl.ID, message)
+	s.createHistoryEvent(ctx, models.HistoryEventDownloadFailed, dl.Title, dl.BookID, map[string]string{"guid": dl.GUID, "message": message})
 }
 
 // checkSABnzbdDownloads polls SABnzbd for status changes.
@@ -266,20 +292,14 @@ func (s *Scanner) checkSABnzbdDownloads(ctx context.Context, client *models.Down
 					slog.Debug("remapped download path", "sab", slot.Path, "local", localPath)
 				}
 				slog.Info("download completed", "title", dl.Title, "path", localPath)
-				s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusCompleted)
+				s.updateDownloadStatus(ctx, dl.ID, models.DownloadStatusCompleted)
 				s.tryImportSABnzbd(ctx, sab, dl, slot.NzoID, localPath)
 			}
 		case "Failed":
 			if dl.Status != models.DownloadStatusFailed {
 				slog.Warn("download failed", "title", dl.Title, "message", slot.FailMessage)
-				s.downloads.SetError(ctx, dl.ID, slot.FailMessage)
-				eventData, _ := json.Marshal(map[string]string{"guid": dl.GUID, "message": slot.FailMessage})
-				s.history.Create(ctx, &models.HistoryEvent{
-					BookID:      dl.BookID,
-					EventType:   models.HistoryEventDownloadFailed,
-					SourceTitle: dl.Title,
-					Data:        string(eventData),
-				})
+				s.setDownloadError(ctx, dl.ID, slot.FailMessage)
+				s.createHistoryEvent(ctx, models.HistoryEventDownloadFailed, dl.Title, dl.BookID, map[string]string{"guid": dl.GUID, "message": slot.FailMessage})
 			}
 		}
 	}
@@ -297,7 +317,11 @@ func (s *Scanner) checkTransmissionDownloads(ctx context.Context, client *models
 	}
 
 	// Get all active downloads from DB (not yet completed/imported)
-	allDownloads, _ := s.downloads.List(ctx)
+	allDownloads, err := s.downloads.List(ctx)
+	if err != nil {
+		slog.Debug("failed to list downloads", "error", err)
+		return
+	}
 	torrentsMap := make(map[string]transmission.Torrent)
 	for _, t := range torrents {
 		torrentsMap[fmt.Sprintf("%d", t.ID)] = t
@@ -321,7 +345,7 @@ func (s *Scanner) checkTransmissionDownloads(ctx context.Context, client *models
 		if isComplete && (dl.Status == models.DownloadStatusDownloading || dl.Status == models.DownloadStatusQueued) {
 			// Download is complete
 			slog.Info("download completed", "title", dl.Title, "path", torrent.DownloadDir)
-			s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusCompleted)
+			s.updateDownloadStatus(ctx, dl.ID, models.DownloadStatusCompleted)
 			s.tryImportTransmission(ctx, &dl, torrent.DownloadDir)
 		} else if isStopped && !isComplete && dl.Status != models.DownloadStatusFailed {
 			if stopError == "" {
@@ -344,7 +368,11 @@ func (s *Scanner) checkQbittorrentDownloads(ctx context.Context, client *models.
 		return
 	}
 
-	allDownloads, _ := s.downloads.List(ctx)
+	allDownloads, err := s.downloads.List(ctx)
+	if err != nil {
+		slog.Debug("failed to list downloads", "error", err)
+		return
+	}
 	torrentsMap := make(map[string]qbittorrent.Torrent)
 	for _, t := range torrents {
 		torrentsMap[strings.ToLower(t.Hash)] = t
@@ -373,7 +401,7 @@ func (s *Scanner) checkQbittorrentDownloads(ctx context.Context, client *models.
 			downloadPath = s.remapper.Apply(downloadPath)
 
 			slog.Info("download completed", "title", dl.Title, "path", downloadPath)
-			s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusCompleted)
+			s.updateDownloadStatus(ctx, dl.ID, models.DownloadStatusCompleted)
 			s.tryImportQbittorrent(ctx, &dl, downloadPath)
 		} else if isFailed && dl.Status != models.DownloadStatusFailed {
 			slog.Warn("download failed", "title", dl.Title, "state", torrent.State)
@@ -410,7 +438,7 @@ func (s *Scanner) tryImportInternal(ctx context.Context, dl *models.Download, do
 
 	// Find book files in the download path
 	var bookFiles []string
-	filepath.Walk(downloadPath, func(path string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(downloadPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
@@ -418,7 +446,9 @@ func (s *Scanner) tryImportInternal(ctx context.Context, dl *models.Download, do
 			bookFiles = append(bookFiles, path)
 		}
 		return nil
-	})
+	}); err != nil {
+		slog.Warn("failed to walk download path", "path", downloadPath, "error", err)
+	}
 
 	if len(bookFiles) == 0 {
 		slog.Warn("no book files found in download", "path", downloadPath)
@@ -468,7 +498,7 @@ func (s *Scanner) tryImportInternal(ctx context.Context, dl *models.Download, do
 				slog.Error("failed to update audiobook file path", "bookID", book.ID, "error", err)
 			}
 		}
-		s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusImported)
+		s.updateDownloadStatus(ctx, dl.ID, models.DownloadStatusImported)
 		slog.Info("audiobook imported", "title", func() string {
 			if book != nil {
 				return book.Title
@@ -478,13 +508,7 @@ func (s *Scanner) tryImportInternal(ctx context.Context, dl *models.Download, do
 
 		s.pushToCalibre(ctx, book, author, destDir)
 
-		eventData, _ := json.Marshal(map[string]string{"path": destDir})
-		s.history.Create(ctx, &models.HistoryEvent{
-			BookID:      dl.BookID,
-			EventType:   models.HistoryEventBookImported,
-			SourceTitle: dl.Title,
-			Data:        string(eventData),
-		})
+		s.createHistoryEvent(ctx, models.HistoryEventBookImported, dl.Title, dl.BookID, map[string]string{"path": destDir})
 		if cleanupFunc != nil {
 			if err := cleanupFunc(); err != nil {
 				slog.Warn("cleanup failed", cleanupWarnAttrs(cleanupClientType, cleanupRemoteID, err)...)
@@ -516,18 +540,12 @@ func (s *Scanner) tryImportInternal(ctx context.Context, dl *models.Download, do
 		if err := s.books.SetFormatFilePath(ctx, book.ID, models.MediaTypeEbook, destPath); err != nil {
 			slog.Error("failed to update ebook file path", "bookID", book.ID, "error", err)
 		}
-		s.downloads.UpdateStatus(ctx, dl.ID, models.DownloadStatusImported)
+		s.updateDownloadStatus(ctx, dl.ID, models.DownloadStatusImported)
 		slog.Info("book imported", "title", book.Title, "path", destPath)
 
 		s.pushToCalibre(ctx, book, author, destPath)
 
-		eventData, _ := json.Marshal(map[string]string{"path": destPath})
-		s.history.Create(ctx, &models.HistoryEvent{
-			BookID:      dl.BookID,
-			EventType:   models.HistoryEventBookImported,
-			SourceTitle: dl.Title,
-			Data:        string(eventData),
-		})
+		s.createHistoryEvent(ctx, models.HistoryEventBookImported, dl.Title, dl.BookID, map[string]string{"path": destPath})
 	}
 
 	// A clean run leaves the download folder holding only non-book
@@ -587,7 +605,7 @@ func (s *Scanner) FindExisting(ctx context.Context, title, authorName string) st
 		return ""
 	}
 	var found string
-	filepath.Walk(s.libraryDir, func(path string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(s.libraryDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || found != "" {
 			return nil
 		}
@@ -599,7 +617,9 @@ func (s *Scanner) FindExisting(ctx context.Context, title, authorName string) st
 			found = path
 		}
 		return nil
-	})
+	}); err != nil {
+		slog.Warn("failed to search library for existing file", "path", s.libraryDir, "error", err)
+	}
 	return found
 }
 
@@ -720,7 +740,7 @@ func (s *Scanner) ScanLibrary(ctx context.Context) {
 
 	// Collect all book files on disk
 	var foundFiles []string
-	filepath.Walk(s.libraryDir, func(path string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(s.libraryDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
@@ -728,7 +748,9 @@ func (s *Scanner) ScanLibrary(ctx context.Context) {
 			foundFiles = append(foundFiles, path)
 		}
 		return nil
-	})
+	}); err != nil {
+		slog.Warn("library scan walk encountered errors", "path", s.libraryDir, "error", err)
+	}
 
 	slog.Info("library scan found files", "path", s.libraryDir, "count", len(foundFiles))
 

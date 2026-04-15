@@ -1,3 +1,5 @@
+// Package downloader provides a unified interface for dispatching download
+// requests to different download clients (SABnzbd, Transmission, qBittorrent).
 package downloader
 
 import (

@@ -5,9 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strconv"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/vavallee/bindery/internal/db"
 	"github.com/vavallee/bindery/internal/downloader"
@@ -126,7 +123,11 @@ func (h *QueueHandler) Grab(w http.ResponseWriter, r *http.Request) {
 		req.Protocol = "usenet"
 	}
 
-	existing, _ := h.downloads.GetByGUID(r.Context(), req.GUID)
+	existing, err := h.downloads.GetByGUID(r.Context(), req.GUID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 	if existing != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "already grabbed"})
 		return
@@ -159,7 +160,9 @@ func (h *QueueHandler) Grab(w http.ResponseWriter, r *http.Request) {
 	sendRes, err := downloader.SendDownload(r.Context(), client, req.NZBURL, req.Title)
 	if err != nil {
 		slog.Error("failed to send download", "client_type", client.Type, "error", err, "title", req.Title)
-		h.downloads.SetError(r.Context(), dl.ID, err.Error())
+		if setErr := h.downloads.SetError(r.Context(), dl.ID, err.Error()); setErr != nil {
+			slog.Warn("failed to persist download error", "download_id", dl.ID, "error", setErr)
+		}
 		h.recordHistory(r.Context(), models.HistoryEventDownloadFailed, req.Title, req.BookID, map[string]interface{}{"guid": req.GUID, "message": err.Error()})
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to send to downloader: " + err.Error()})
 		return
@@ -167,14 +170,20 @@ func (h *QueueHandler) Grab(w http.ResponseWriter, r *http.Request) {
 
 	if remoteID := sendRes.RemoteID; remoteID != "" {
 		if sendRes.UsesTorrentID {
-			h.downloads.SetTorrentID(r.Context(), dl.ID, remoteID)
+			if err := h.downloads.SetTorrentID(r.Context(), dl.ID, remoteID); err != nil {
+				slog.Warn("failed to set torrent ID", "download_id", dl.ID, "error", err)
+			}
 			dl.TorrentID = &remoteID
 		} else {
-			h.downloads.SetNzoID(r.Context(), dl.ID, remoteID)
+			if err := h.downloads.SetNzoID(r.Context(), dl.ID, remoteID); err != nil {
+				slog.Warn("failed to set NZO ID", "download_id", dl.ID, "error", err)
+			}
 			dl.SABnzbdNzoID = &remoteID
 		}
 	}
-	h.downloads.UpdateStatus(r.Context(), dl.ID, models.DownloadStatusDownloading)
+	if err := h.downloads.UpdateStatus(r.Context(), dl.ID, models.DownloadStatusDownloading); err != nil {
+		slog.Warn("failed to update download status", "download_id", dl.ID, "status", models.DownloadStatusDownloading, "error", err)
+	}
 	dl.Status = models.DownloadStatusDownloading
 
 	h.recordHistory(r.Context(), models.HistoryEventGrabbed, req.Title, req.BookID, map[string]interface{}{
@@ -206,7 +215,11 @@ func (h *QueueHandler) recordHistory(ctx context.Context, eventType, sourceTitle
 	if h.history == nil {
 		return
 	}
-	dataJSON, _ := json.Marshal(data)
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		slog.Warn("failed to marshal history data", "event_type", eventType, "error", err)
+		return
+	}
 	evt := &models.HistoryEvent{
 		BookID:      bookID,
 		EventType:   eventType,
@@ -219,9 +232,16 @@ func (h *QueueHandler) recordHistory(ctx context.Context, eventType, sourceTitle
 }
 
 func (h *QueueHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
 
-	downloads, _ := h.downloads.List(r.Context())
+	downloads, err := h.downloads.List(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 	var target *models.Download
 	for _, d := range downloads {
 		if d.ID == id {
@@ -237,18 +257,29 @@ func (h *QueueHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if target.DownloadClientID != nil {
 		client, err := h.clients.GetByID(r.Context(), *target.DownloadClientID)
 		if err == nil && client != nil {
-			_ = downloader.RemoveDownload(r.Context(), client, target, true)
+			if err := downloader.RemoveDownload(r.Context(), client, target, true); err != nil {
+				slog.Warn("failed to remove download from client", "download_id", target.ID, "client_id", client.ID, "error", err)
+			}
+		} else if err != nil {
+			slog.Warn("failed to load download client", "download_id", target.ID, "client_id", *target.DownloadClientID, "error", err)
 		}
 	}
 
 	if target.BookID != nil {
-		book, _ := h.books.GetByID(r.Context(), *target.BookID)
-		if book != nil && (book.Status == models.BookStatusDownloading || book.Status == models.BookStatusDownloaded) {
+		book, err := h.books.GetByID(r.Context(), *target.BookID)
+		if err != nil {
+			slog.Warn("failed to load book for download delete", "download_id", target.ID, "book_id", *target.BookID, "error", err)
+		} else if book != nil && (book.Status == models.BookStatusDownloading || book.Status == models.BookStatusDownloaded) {
 			book.Status = models.BookStatusWanted
-			h.books.Update(r.Context(), book)
+			if err := h.books.Update(r.Context(), book); err != nil {
+				slog.Warn("failed to reset book status after download delete", "download_id", target.ID, "book_id", book.ID, "error", err)
+			}
 		}
 	}
 
-	h.downloads.Delete(r.Context(), id)
+	if err := h.downloads.Delete(r.Context(), id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

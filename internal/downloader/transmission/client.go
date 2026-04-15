@@ -9,7 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,6 +22,8 @@ import (
 // Authentication is done via HTTP Basic Auth if credentials are provided.
 type Client struct {
 	baseURL   string
+	rpcURL    *url.URL
+	initErr   error
 	username  string
 	password  string
 	http      *http.Client
@@ -33,18 +39,32 @@ func New(host string, port int, username, password string, useSSL bool) *Client 
 		scheme = "https"
 	}
 
-	return &Client{
-		baseURL:  fmt.Sprintf("%s://%s:%d/transmission/rpc", scheme, host, port),
+	client := &Client{
 		username: username,
 		password: password,
 		http:     &http.Client{Timeout: 15 * time.Second},
 	}
+
+	rpcURL, err := buildRPCURL(scheme, host, port)
+	if err != nil {
+		client.initErr = err
+	} else {
+		client.rpcURL = rpcURL
+		client.baseURL = rpcURL.String()
+	}
+
+	client.http.CheckRedirect = client.checkRedirect
+
+	return client
 }
 
 // Test verifies connectivity by fetching session information.
 func (c *Client) Test(ctx context.Context) error {
-	req := c.buildRequest("session-get", map[string]interface{}{})
-	_, err := c.doRequest(ctx, req)
+	req, err := c.buildRequest(ctx, "session-get", map[string]interface{}{})
+	if err != nil {
+		return err
+	}
+	_, err = c.doRequest(req)
 	return err
 }
 
@@ -57,8 +77,11 @@ func (c *Client) AddTorrent(ctx context.Context, magnetOrURL, downloadDir string
 		args["download-dir"] = downloadDir
 	}
 
-	req := c.buildRequest("torrent-add", args)
-	respBody, err := c.doRequest(ctx, req)
+	req, err := c.buildRequest(ctx, "torrent-add", args)
+	if err != nil {
+		return 0, err
+	}
+	respBody, err := c.doRequest(req)
 	if err != nil {
 		return 0, err
 	}
@@ -91,8 +114,11 @@ func (c *Client) GetTorrents(ctx context.Context, downloadDir string) ([]Torrent
 			"percentDone", "downloadDir", "labels"},
 	}
 
-	req := c.buildRequest("torrent-get", args)
-	respBody, err := c.doRequest(ctx, req)
+	req, err := c.buildRequest(ctx, "torrent-get", args)
+	if err != nil {
+		return nil, err
+	}
+	respBody, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -129,21 +155,37 @@ func (c *Client) RemoveTorrent(ctx context.Context, torrentID int64, deleteFiles
 		args["delete-local-data"] = true
 	}
 
-	req := c.buildRequest("torrent-remove", args)
-	_, err := c.doRequest(ctx, req)
+	req, err := c.buildRequest(ctx, "torrent-remove", args)
+	if err != nil {
+		return err
+	}
+	_, err = c.doRequest(req)
 	return err
 }
 
 // buildRequest constructs a Transmission RPC request.
-func (c *Client) buildRequest(method string, args map[string]interface{}) *http.Request {
+func (c *Client) buildRequest(ctx context.Context, method string, args map[string]interface{}) (*http.Request, error) {
+	if c.initErr != nil {
+		return nil, c.initErr
+	}
+	if c.rpcURL == nil {
+		return nil, fmt.Errorf("transmission RPC URL is not configured")
+	}
+
 	payload := map[string]interface{}{
 		"method":    method,
 		"arguments": args,
 	}
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal transmission request: %w", err)
+	}
 
-	req, _ := http.NewRequest(http.MethodPost, c.baseURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build transmission request: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	// Add session ID if we have it
@@ -159,14 +201,41 @@ func (c *Client) buildRequest(method string, args map[string]interface{}) *http.
 		req.Header.Set("Authorization", "Basic "+authStr)
 	}
 
-	return req
+	return req, nil
+}
+
+func buildRPCURL(scheme, host string, port int) (*url.URL, error) {
+	if err := validateHost(host); err != nil {
+		return nil, err
+	}
+	if port <= 0 || port > 65535 {
+		return nil, fmt.Errorf("invalid Transmission port %d", port)
+	}
+
+	return &url.URL{
+		Scheme: scheme,
+		Host:   net.JoinHostPort(host, strconv.Itoa(port)),
+		Path:   "/transmission/rpc",
+	}, nil
+}
+
+func validateHost(host string) error {
+	if strings.TrimSpace(host) == "" {
+		return fmt.Errorf("transmission host is empty")
+	}
+	if strings.Contains(host, "://") || strings.ContainsAny(host, "/?#@") {
+		return fmt.Errorf("transmission host must be a bare hostname or IP address")
+	}
+	return nil
 }
 
 // doRequest sends a request and handles the 409 conflict response (session ID update).
-func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, error) {
-	req = req.WithContext(ctx)
+func (c *Client) doRequest(req *http.Request) ([]byte, error) {
+	if err := c.validateRequestTarget(req.URL); err != nil {
+		return nil, err
+	}
 
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Do(req) //nolint:gosec // req URL is pinned by buildRPCURL/validateRequestTarget and redirects are checked
 	if err != nil {
 		return nil, fmt.Errorf("request: %w", err)
 	}
@@ -187,7 +256,10 @@ func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, erro
 			if err != nil {
 				return nil, err
 			}
-			resp2, err := c.http.Do(req2)
+			if err := c.validateRequestTarget(req2.URL); err != nil {
+				return nil, err
+			}
+			resp2, err := c.http.Do(req2) //nolint:gosec // retry uses the same validated RPC target with only session header updated
 			if err != nil {
 				return nil, fmt.Errorf("retry request: %w", err)
 			}
@@ -203,6 +275,26 @@ func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, erro
 	}
 
 	return body, nil
+}
+
+func (c *Client) validateRequestTarget(target *url.URL) error {
+	if target == nil {
+		return fmt.Errorf("request target is nil")
+	}
+	if c.rpcURL == nil {
+		return fmt.Errorf("transmission RPC URL is not configured")
+	}
+	if target.Scheme != c.rpcURL.Scheme || target.Host != c.rpcURL.Host || target.Path != c.rpcURL.Path {
+		return fmt.Errorf("refusing transmission request to unexpected target: %s", target.Redacted())
+	}
+	return nil
+}
+
+func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after too many redirects")
+	}
+	return c.validateRequestTarget(req.URL)
 }
 
 // copyRequest creates a copy of the request with a fresh body.

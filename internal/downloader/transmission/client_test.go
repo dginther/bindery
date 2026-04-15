@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -11,6 +12,11 @@ import (
 func newTestClient(serverURL, username, password string) *Client {
 	c := New("localhost", 9091, username, password, false)
 	c.baseURL = serverURL
+	parsed, err := url.Parse(serverURL)
+	if err != nil {
+		panic(err)
+	}
+	c.rpcURL = parsed
 	return c
 }
 
@@ -19,6 +25,9 @@ func TestNew(t *testing.T) {
 	if c.baseURL != "http://myhost:9091/transmission/rpc" {
 		t.Errorf("baseURL: want %q, got %q", "http://myhost:9091/transmission/rpc", c.baseURL)
 	}
+	if c.initErr != nil {
+		t.Fatalf("unexpected initErr: %v", c.initErr)
+	}
 	if c.username != "admin" || c.password != "secret" {
 		t.Error("credentials not stored correctly")
 	}
@@ -26,6 +35,16 @@ func TestNew(t *testing.T) {
 	cs := New("securehost", 443, "u", "p", true)
 	if cs.baseURL != "https://securehost:443/transmission/rpc" {
 		t.Errorf("SSL baseURL: got %q", cs.baseURL)
+	}
+}
+
+func TestNew_InvalidHost(t *testing.T) {
+	c := New("http://bad-host", 9091, "admin", "secret", false)
+	if c.initErr == nil {
+		t.Fatal("expected invalid host to be rejected")
+	}
+	if err := c.Test(context.Background()); err == nil {
+		t.Fatal("expected client operations to fail when initialized with invalid host")
 	}
 }
 
@@ -302,5 +321,44 @@ func TestSession_409NoHeader(t *testing.T) {
 	c := newTestClient(srv.URL, "user", "pass")
 	if err := c.Test(context.Background()); err == nil {
 		t.Fatal("expected error when 409 has no session header")
+	}
+}
+
+func TestDoRequest_RejectsUnexpectedTarget(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"result":"success","arguments":{}}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv.URL, "user", "pass")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/other", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+
+	if _, err := c.doRequest(req); err == nil {
+		t.Fatal("expected unexpected target to be rejected")
+	}
+}
+
+func TestDoRequest_RejectsRedirectToDifferentTarget(t *testing.T) {
+	redirected := false
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirected = true
+		_, _ = w.Write([]byte(`{"result":"success","arguments":{}}`))
+	}))
+	defer target.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv.URL, "user", "pass")
+	if err := c.Test(context.Background()); err == nil {
+		t.Fatal("expected redirect to different target to be rejected")
+	}
+	if redirected {
+		t.Fatal("unexpectedly followed redirect to different target")
 	}
 }

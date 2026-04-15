@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
-	"net/url"
 
 	"github.com/vavallee/bindery/internal/db"
 	"github.com/vavallee/bindery/internal/models"
@@ -157,11 +157,11 @@ func TestCheckTransmissionDownloads_StoppedWithoutErrorDoesNotFail(t *testing.T)
 	s, _, _, ctx := scannerFixture(t, t.TempDir())
 	host, port := scannerTestHostPort(t, srv.URL)
 	client := &models.DownloadClient{
-		Name:     "transmission",
-		Type:     "transmission",
-		Host:     host,
-		Port:     port,
-		Enabled:  true,
+		Name:    "transmission",
+		Type:    "transmission",
+		Host:    host,
+		Port:    port,
+		Enabled: true,
 	}
 	if err := s.clients.Create(ctx, client); err != nil {
 		t.Fatalf("create client: %v", err)
@@ -218,11 +218,11 @@ func TestCheckTransmissionDownloads_StoppedWithErrorMarksFailed(t *testing.T) {
 	s, _, _, ctx := scannerFixture(t, t.TempDir())
 	host, port := scannerTestHostPort(t, srv.URL)
 	client := &models.DownloadClient{
-		Name:     "transmission",
-		Type:     "transmission",
-		Host:     host,
-		Port:     port,
-		Enabled:  true,
+		Name:    "transmission",
+		Type:    "transmission",
+		Host:    host,
+		Port:    port,
+		Enabled: true,
 	}
 	if err := s.clients.Create(ctx, client); err != nil {
 		t.Fatalf("create client: %v", err)
