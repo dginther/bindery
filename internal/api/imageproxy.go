@@ -64,8 +64,8 @@ func (h *ImageProxyHandler) Serve(w http.ResponseWriter, r *http.Request) {
 	ctFile := imgFile + ".ct"
 
 	// Serve from cache if fresh.
-	if info, err := os.Stat(imgFile); err == nil && time.Since(info.ModTime()) < imageCacheTTL { // #nosec G304 -- path derived from sha256(url), not user input
-		ct, _ := os.ReadFile(ctFile) //nolint:gosec // #nosec G304 -- path derived from sha256(url), not user input
+	if info, err := os.Stat(imgFile); err == nil && time.Since(info.ModTime()) < imageCacheTTL { // #nosec -- path derived from sha256(url), not user input
+		ct, _ := os.ReadFile(ctFile) //nolint:gosec // #nosec -- path derived from sha256(url), not user input
 		if len(ct) == 0 {
 			ct = []byte("image/jpeg")
 		}
@@ -79,12 +79,12 @@ func (h *ImageProxyHandler) Serve(w http.ResponseWriter, r *http.Request) {
 	// the caller's context (cancellation, deadline). The URL has already been
 	// validated by h.validateURL; the nolint suppresses the gosec taint warning
 	// that can't trace through the validateURL indirection.
-	upReq, err := http.NewRequestWithContext(r.Context(), http.MethodGet, raw, nil) //nolint:gosec // #nosec G107 -- URL validated above via h.validateURL
+	upReq, err := http.NewRequestWithContext(r.Context(), http.MethodGet, raw, nil) //nolint:gosec // #nosec -- URL validated above via h.validateURL
 	if err != nil {
 		http.Error(w, "upstream fetch failed", http.StatusBadGateway)
 		return
 	}
-	resp, err := h.client.Do(upReq) //nolint:gosec // #nosec G107 -- URL validated above via h.validateURL
+	resp, err := h.client.Do(upReq) //nolint:gosec // #nosec -- URL validated above via h.validateURL
 	if err != nil {
 		http.Error(w, "upstream fetch failed", http.StatusBadGateway)
 		return
@@ -114,8 +114,8 @@ func (h *ImageProxyHandler) Serve(w http.ResponseWriter, r *http.Request) {
 
 	// Write to cache (best-effort — a write failure is not fatal).
 	if mkErr := os.MkdirAll(h.cacheDir, imageDirMode); mkErr == nil {
-		_ = os.WriteFile(imgFile, body, imageCacheMode)      // #nosec G304 -- path derived from sha256(url), not user input
-		_ = os.WriteFile(ctFile, []byte(ct), imageCacheMode) // #nosec G304 -- path derived from sha256(url), not user input
+		_ = os.WriteFile(imgFile, body, imageCacheMode)      // #nosec -- path derived from sha256(url), not user input
+		_ = os.WriteFile(ctFile, []byte(ct), imageCacheMode) // #nosec -- path derived from sha256(url), not user input
 	}
 
 	w.Header().Set("Content-Type", ct)
