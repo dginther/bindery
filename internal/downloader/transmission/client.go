@@ -107,6 +107,8 @@ func (c *Client) AddTorrent(ctx context.Context, magnetOrURL, downloadDir string
 }
 
 // GetTorrents returns torrents in the given download directory (empty = all).
+// On a shared Transmission instance, pass the client's configured download
+// directory so Bindery only sees its own torrents.
 func (c *Client) GetTorrents(ctx context.Context, downloadDir string) ([]Torrent, error) {
 	args := map[string]interface{}{
 		"fields": []string{"id", "hashString", "name", "totalSize", "downloadedEver",

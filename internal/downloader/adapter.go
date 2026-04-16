@@ -159,7 +159,7 @@ func getSABLiveStatuses(ctx context.Context, client *models.DownloadClient) (map
 func getTorrentLiveStatuses(ctx context.Context, client *models.DownloadClient) (map[string]LiveStatus, error) {
 	if client.Type == "transmission" {
 		trans := transmission.New(client.Host, client.Port, client.Username, client.Password, client.UseSSL)
-		torrents, err := trans.GetTorrents(ctx, "")
+		torrents, err := trans.GetTorrents(ctx, client.Category)
 		if err != nil {
 			return nil, err
 		}

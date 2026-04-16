@@ -71,12 +71,20 @@ func TestGetLiveStatusesTransmission(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"arguments": map[string]any{
-				"torrents": []map[string]any{{
-					"id":           7,
-					"percentDone":  0.42,
-					"eta":          125,
-					"rateDownload": 4096,
-				}},
+				"torrents": []map[string]any{
+					{
+						"id":           7,
+						"percentDone":  0.42,
+						"eta":          125,
+						"rateDownload": 4096,
+						"downloadDir":  "/books",
+					},
+					{
+						"id":          99,
+						"percentDone": 1.0,
+						"downloadDir": "/other",
+					},
+				},
 			},
 			"result": "success",
 		})
@@ -84,14 +92,18 @@ func TestGetLiveStatusesTransmission(t *testing.T) {
 	defer srv.Close()
 
 	host, port := serverHostPort(t, srv.URL)
-	client := &models.DownloadClient{Type: "transmission", Host: host, Port: port}
 
+	// No category set — all torrents are returned.
+	client := &models.DownloadClient{Type: "transmission", Host: host, Port: port}
 	statusByID, usesTorrentID, err := GetLiveStatuses(context.Background(), client)
 	if err != nil {
 		t.Fatalf("GetLiveStatuses: %v", err)
 	}
 	if !usesTorrentID {
 		t.Fatalf("expected usesTorrentID=true for transmission")
+	}
+	if len(statusByID) != 2 {
+		t.Fatalf("expected 2 statuses with no category filter, got %d", len(statusByID))
 	}
 	status, ok := statusByID["7"]
 	if !ok {
@@ -102,6 +114,22 @@ func TestGetLiveStatusesTransmission(t *testing.T) {
 	}
 	if status.TimeLeft == "" || status.Speed == "" {
 		t.Fatalf("expected non-empty timeLeft/speed, got %+v", status)
+	}
+
+	// Category acts as a download-directory filter on shared Transmission instances.
+	clientFiltered := &models.DownloadClient{Type: "transmission", Host: host, Port: port, Category: "/books"}
+	filteredByID, _, err := GetLiveStatuses(context.Background(), clientFiltered)
+	if err != nil {
+		t.Fatalf("GetLiveStatuses with category: %v", err)
+	}
+	if len(filteredByID) != 1 {
+		t.Fatalf("expected 1 status when category=/books, got %d", len(filteredByID))
+	}
+	if _, ok := filteredByID["7"]; !ok {
+		t.Fatalf("expected torrent id 7 in filtered result")
+	}
+	if _, ok := filteredByID["99"]; ok {
+		t.Fatalf("torrent 99 (/other) should have been filtered out")
 	}
 }
 

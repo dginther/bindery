@@ -328,8 +328,9 @@ func (s *Scanner) checkSABnzbdDownloads(ctx context.Context, client *models.Down
 func (s *Scanner) checkTransmissionDownloads(ctx context.Context, client *models.DownloadClient) {
 	trans := transmission.New(client.Host, client.Port, client.Username, client.Password, client.UseSSL)
 
-	// Get all torrents
-	torrents, err := trans.GetTorrents(ctx, "")
+	// Get all torrents — Category is used as the download directory filter so
+	// Bindery only sees its own torrents on a shared Transmission instance.
+	torrents, err := trans.GetTorrents(ctx, client.Category)
 	if err != nil {
 		slog.Debug("failed to fetch Transmission torrents", "error", err)
 		return
