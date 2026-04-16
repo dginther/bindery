@@ -114,7 +114,7 @@ func (h *ImageProxyHandler) Serve(w http.ResponseWriter, r *http.Request) {
 
 	// Write to cache (best-effort — a write failure is not fatal).
 	if mkErr := os.MkdirAll(h.cacheDir, imageDirMode); mkErr == nil {
-		_ = os.WriteFile(imgFile, body, imageCacheMode) // #nosec G304 -- path derived from sha256(url), not user input
+		_ = os.WriteFile(imgFile, body, imageCacheMode)      // #nosec G304 -- path derived from sha256(url), not user input
 		_ = os.WriteFile(ctFile, []byte(ct), imageCacheMode) // #nosec G304 -- path derived from sha256(url), not user input
 	}
 
