@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"fmt"
+
 	"github.com/vavallee/bindery/internal/db"
 	"github.com/vavallee/bindery/internal/downloader"
 	"github.com/vavallee/bindery/internal/indexer"
@@ -205,7 +207,7 @@ func (h *QueueHandler) selectClient(ctx context.Context, protocol, mediaType str
 		return nil, err
 	}
 	if len(candidates) == 0 {
-		return h.clients.GetFirstEnabled(ctx)
+		return nil, fmt.Errorf("no enabled %s download client configured", protocol)
 	}
 	return db.PickClientForMediaType(candidates, mediaType), nil
 }

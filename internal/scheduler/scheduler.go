@@ -206,7 +206,8 @@ func (s *Scheduler) searchAndGrabFormat(ctx context.Context, book models.Book, m
 		}
 	}
 	if client == nil {
-		slog.Debug("SearchAndGrabBook: no download client available", "book", book.Title)
+		slog.Warn("SearchAndGrabBook: no enabled download client for protocol", "book", book.Title, "protocol", best.Protocol)
+
 		return
 	}
 
